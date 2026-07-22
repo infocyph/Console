@@ -1,0 +1,58 @@
+{
+    "name": "infocyph/console",
+    "description": "A fast, expressive foundation for modern PHP command-line applications.",
+    "license": "MIT",
+    "type": "library",
+    "keywords": [
+        "cli",
+        "console",
+        "command-line",
+        "infocyph"
+    ],
+    "authors": [
+        {
+            "name": "infocyph",
+            "email": "infocyph@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "infocyph/arraykit": "^4.4",
+        "infocyph/cachelayer": "^1.4",
+        "infocyph/dblayer": "^2.1",
+        "infocyph/epicrypt": "^1.0.1",
+        "infocyph/intermix": "^7.2.2",
+        "infocyph/otp": "^5.03",
+        "infocyph/pathwise": "^2.5.2",
+        "infocyph/reqshield": "^2.4.1",
+        "infocyph/talkingbytes": "^0.1.1",
+        "infocyph/uid": "^4.2.1"
+    },
+    "require-dev": {
+        "infocyph/phpforge": "dev-main"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": {
+            "Infocyph\\Console\\": "src/"
+        }
+    },
+    "bin": [
+        "bin/console"
+    ],
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true,
+            "infocyph/phpforge": true,
+            "pestphp/pest-plugin": true
+        },
+        "classmap-authoritative": true,
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "scripts": {
+        "benchmark": "@php benchmarks/run.php",
+        "test": "@php vendor/bin/pest --compact"
+    }
+}

@@ -1,0 +1,300 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Infocyph\Console;
+
+use Infocyph\Console\Command\Capability;
+use Infocyph\Console\Command\CommandContract;
+use Infocyph\Console\Command\CommandRegistry;
+use Infocyph\Console\Command\CommandResolver;
+use Infocyph\Console\Configuration\Configuration;
+use Infocyph\Console\Configuration\ConfigurationLoader;
+use Infocyph\Console\Configuration\ConfigurationRepository;
+use Infocyph\Console\Container\ContainerConfigurator;
+use Infocyph\Console\Container\ContainerFactory;
+use Infocyph\Console\Discovery\CommandDiscoverer;
+use Infocyph\Console\Discovery\CommandManifest;
+use Infocyph\Console\Identity\ExecutionIdGenerator;
+use Infocyph\Console\Infrastructure\CapabilityLoader;
+use Infocyph\Console\IO\ConsoleIO;
+use Infocyph\Console\IO\IO;
+use Infocyph\Console\Otp\CommandOtpAuthorizer;
+use Infocyph\Console\Otp\OtpVerifier;
+use Infocyph\Console\Security\CommandAuthorizationPolicy;
+use Infocyph\Console\Style\Theme;
+use Infocyph\Console\Validation\DBLayerDatabaseProvider;
+use Infocyph\Console\Validation\InputValidator;
+use Infocyph\Console\Validation\ValidationManifest;
+use Infocyph\DBLayer\Connection\Connection;
+use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
+use Infocyph\ReqShield\Contracts\DatabaseProvider;
+
+final class ApplicationBuilder
+{
+    private readonly ContainerConfigurator $container;
+
+    private ?CommandAuthorizationPolicy $authorizationPolicy = null;
+
+    /** @var array<string, list<\Closure(Container): void>> */
+    private array $capabilityConfigurers = [];
+
+    private ?string $commandManifest = null;
+
+    /** @var list<class-string<CommandContract>> */
+    private array $commands = [];
+
+    private ?string $completionManifest = null;
+
+    /** @var list<string> */
+    private array $configurationFiles = [];
+
+    /** @var list<array<array-key,mixed>> */
+    private array $configurationLayers = [];
+
+    /** @var array<string,array<array-key,mixed>> */
+    private array $configurationProfiles = [];
+
+    /** @var array<string,mixed> */
+    private array $configurationRules = [];
+
+    /** @var array<string,mixed> */
+    private array $configurationSanitizers = [];
+
+    private ?ExecutionIdGenerator $executionIds = null;
+
+    private ?IO $io = null;
+
+    private string $name = 'console';
+
+    private ?OtpVerifier $otpVerifier = null;
+
+    private bool $production = false;
+
+    private bool $strictConfiguration = false;
+
+    private ?Theme $theme = null;
+
+    private ?DatabaseProvider $validationDatabase = null;
+
+    private ?string $validationManifest = null;
+
+    private string $version = 'dev';
+
+    public function __construct()
+    {
+        $this->container = new ContainerConfigurator();
+    }
+
+    public function authorizationPolicy(CommandAuthorizationPolicy $policy): self
+    {
+        $this->authorizationPolicy = $policy;
+
+        return $this;
+    }
+
+    public function build(): Application
+    {
+        if ($this->production && $this->commandManifest === null) {
+            throw new \LogicException('Production applications require a compiled command manifest.');
+        }
+        $repository = new ConfigurationRepository(new ConfigurationLoader(), $this->configurationLayers, $this->configurationFiles, $this->configurationRules, $this->configurationSanitizers, $this->strictConfiguration, $this->configurationProfiles);
+        $this->container->configure(static function (Container $container) use ($repository): void {
+            $container->definitions()->bind(ConfigurationRepository::class, $repository);
+            $container->definitions()->bind(Configuration::class, static fn(): Configuration => $repository->configuration());
+        });
+        $io = $this->io ?? ConsoleIO::standard();
+        $io->setTheme($this->theme);
+
+        return new Application(
+            new ApplicationMetadata($this->name, $this->version),
+            $this->commandManifest === null ? new CommandRegistry($this->commands) : CommandManifest::registry($this->commandManifest),
+            new CommandResolver(
+                new ContainerFactory(),
+                $this->container,
+                new InputValidator($this->validationDatabase, $this->validationManifest === null ? null : ValidationManifest::load($this->validationManifest)),
+                new CapabilityLoader($this->capabilityConfigurers, $this->executionIds),
+                new CommandOtpAuthorizer($this->otpVerifier),
+                $repository,
+                $this->authorizationPolicy,
+            ),
+            $io,
+            $this->completionManifest,
+        );
+    }
+
+    /** @param class-string<CommandContract> $command */
+    public function command(string $command): self
+    {
+        $this->commands[] = $command;
+
+        return $this;
+    }
+
+    public function commandManifest(string $path): self
+    {
+        $this->commandManifest = $path;
+
+        return $this;
+    }
+
+    /** @param list<class-string<CommandContract>> $commands */
+    public function commands(array $commands): self
+    {
+        $this->commands = $commands;
+
+        return $this;
+    }
+
+    public function compiledContainer(string $path): self
+    {
+        $this->container->compiledContainer($path);
+
+        return $this;
+    }
+
+    public function completionManifest(string $path): self
+    {
+        $this->completionManifest = $path;
+
+        return $this;
+    }
+
+    /** @param array<array-key,mixed> $configuration */
+    public function configuration(array $configuration): self
+    {
+        $this->configurationLayers[] = $configuration;
+
+        return $this;
+    }
+
+    public function configurationFile(string $path): self
+    {
+        $this->configurationFiles[] = $path;
+
+        return $this;
+    }
+
+    /** @param \Closure(Container): void $configurer */
+    public function configureCapability(Capability $capability, \Closure $configurer): self
+    {
+        $this->capabilityConfigurers[$capability->value] ??= [];
+        $this->capabilityConfigurers[$capability->value][] = $configurer;
+
+        return $this;
+    }
+
+    /** @param \Closure(Container): void $configurer */
+    public function configureContainer(\Closure $configurer): self
+    {
+        $this->container->configure($configurer);
+
+        return $this;
+    }
+
+    public function dbLayerValidation(Connection $connection): self
+    {
+        return $this->validationDatabaseProvider(new DBLayerDatabaseProvider($connection));
+    }
+
+    /** @param list<string> $paths */
+    public function discoverCommands(array $paths): self
+    {
+        $this->commands = [...$this->commands, ...new CommandDiscoverer()->discover($paths)->commands];
+
+        return $this;
+    }
+
+    public function executionIdGenerator(ExecutionIdGenerator $generator): self
+    {
+        $this->executionIds = $generator;
+
+        return $this;
+    }
+
+    public function io(IO $io): self
+    {
+        $this->io = $io;
+
+        return $this;
+    }
+
+    public function name(string $name): self
+    {
+        $this->name = $name;
+
+        return $this;
+    }
+
+    public function otpVerifier(OtpVerifier $verifier): self
+    {
+        $this->otpVerifier = $verifier;
+
+        return $this;
+    }
+
+    public function production(bool $enabled = true): self
+    {
+        $this->production = $enabled;
+
+        return $this;
+    }
+
+    /** @param array<array-key,mixed> $configuration */
+    public function profile(string $name, array $configuration): self
+    {
+        if ($name === '') {
+            throw new \InvalidArgumentException('Configuration profile names cannot be empty.');
+        }
+        $this->configurationProfiles[$name] = $configuration;
+
+        return $this;
+    }
+
+    /** @param class-string<ServiceProviderInterface>|ServiceProviderInterface $provider */
+    public function provider(string|ServiceProviderInterface $provider): self
+    {
+        $this->container->provider($provider);
+
+        return $this;
+    }
+
+    public function theme(Theme $theme): self
+    {
+        $this->theme = $theme;
+
+        return $this;
+    }
+
+    /** @param array<string,mixed> $rules @param array<string,mixed> $sanitizers */
+    public function validateConfiguration(array $rules, array $sanitizers = [], bool $strict = false): self
+    {
+        $this->configurationRules = $rules;
+        $this->configurationSanitizers = $sanitizers;
+        $this->strictConfiguration = $strict;
+
+        return $this;
+    }
+
+    public function validationDatabaseProvider(DatabaseProvider $provider): self
+    {
+        $this->validationDatabase = $provider;
+
+        return $this;
+    }
+
+    public function validationManifest(string $path): self
+    {
+        $this->validationManifest = $path;
+
+        return $this;
+    }
+
+    public function version(string $version): self
+    {
+        $this->version = $version;
+
+        return $this;
+    }
+}

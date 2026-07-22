@@ -1,0 +1,28 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$autoload = $GLOBALS['_composer_autoload_path'] ?? null;
+if (! is_string($autoload) || ! is_file($autoload)) {
+    $autoload = null;
+    foreach ([dirname(__DIR__, 3).'/autoload.php', dirname(__DIR__).'/vendor/autoload.php'] as $candidate) {
+        if (is_file($candidate)) { $autoload = $candidate; break; }
+    }
+}
+if ($autoload === null) { fwrite(STDERR, "Composer autoloader could not be located.\n"); exit(126); }
+require $autoload;
+
+$bootstrap = getenv('CONSOLE_BOOTSTRAP') ?: getcwd().DIRECTORY_SEPARATOR.'console.php';
+if (! is_file($bootstrap)) {
+    fwrite(STDERR, sprintf("Console bootstrap not found at %s. Set CONSOLE_BOOTSTRAP to an application factory file.\n", $bootstrap));
+    exit(2);
+}
+
+$application = require $bootstrap;
+if (! $application instanceof \Infocyph\Console\Application) {
+    fwrite(STDERR, sprintf("Console bootstrap %s must return an Infocyph\\Console\\Application instance.\n", $bootstrap));
+    exit(2);
+}
+
+exit($application->run($argv));
