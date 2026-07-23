@@ -10,12 +10,15 @@ use Infocyph\Console\Command\CommandDescriptor;
 /** @internal */
 final class CommandManifestCompiler
 {
-    /** @param list<class-string<CommandContract>> $commands @return array<string,array<string,mixed>> */
+    /**
+     * @param list<class-string<CommandContract>>|array<string, class-string<CommandContract>> $commands
+     * @return array<string,array<string,mixed>>
+     */
     public function compile(array $commands): array
     {
         $manifest = [];
-        foreach ($commands as $class) {
-            $descriptor = CommandDescriptor::fromClass($class);
+        foreach ($commands as $name => $class) {
+            $descriptor = CommandDescriptor::fromClass($class, is_string($name) ? $name : null);
             if (isset($manifest[$descriptor->name()])) {
                 throw new \InvalidArgumentException(sprintf('Command "%s" is already in the manifest.', $descriptor->name()));
             }
@@ -26,7 +29,7 @@ final class CommandManifestCompiler
         return $manifest;
     }
 
-    /** @param list<class-string<CommandContract>> $commands */
+    /** @param list<class-string<CommandContract>>|array<string, class-string<CommandContract>> $commands */
     public function write(array $commands, string $path): void
     {
         $directory = dirname($path);

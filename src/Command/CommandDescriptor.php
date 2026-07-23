@@ -34,10 +34,14 @@ final readonly class CommandDescriptor
     /**
      * @param class-string<CommandContract> $class
      */
-    public static function fromClass(string $class): self
+    public static function fromClass(string $class, ?string $name = null): self
     {
         $definition = new CommandDefinition();
         $class::define($definition);
+
+        if ($name !== null) {
+            $definition->name($name);
+        }
 
         return $definition->descriptor($class);
     }

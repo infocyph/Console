@@ -19,12 +19,15 @@ final class CommandRegistry
     private array $indexedFiles = [];
 
     /**
-     * @param list<class-string<CommandContract>> $commands
+     * @param list<class-string<CommandContract>>|array<string, class-string<CommandContract>> $commands
      */
     public function __construct(array $commands)
     {
-        foreach ($commands as $command) {
-            $this->register(CommandDescriptor::fromClass($command));
+        foreach ($commands as $name => $command) {
+            $this->register(CommandDescriptor::fromClass(
+                $command,
+                is_string($name) ? $name : null,
+            ));
         }
     }
 

@@ -454,6 +454,28 @@ it('loads compiled command metadata without executing definitions at runtime', f
     }
 });
 
+it('preserves authoritative command map names in compiled manifests', function (): void {
+    $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-mapped-manifest-'.bin2hex(random_bytes(6)).'.php';
+    try {
+        (new CommandManifestCompiler)->write(['manifest:mapped' => ManifestCommand::class], $path);
+        $io = new BufferedIO;
+        $application = Application::configure()->commandManifest($path)->io($io)->build();
+
+        expect($application->run(['tool', 'manifest:mapped', 'Ada']))->toBe(ExitCode::SUCCESS)
+            ->and($io->output())->toBe(['[OK] Ada']);
+    } finally {
+        if (is_file($path)) {
+            unlink($path);
+        }
+        if (is_dir($path.'.d')) {
+            foreach (glob($path.'.d'.DIRECTORY_SEPARATOR.'*.php') ?: [] as $entry) {
+                unlink($entry);
+            }
+            rmdir($path.'.d');
+        }
+    }
+});
+
 it('activates declared infrastructure only for selected commands and authorizes OTP commands', function (): void {
     $io = new BufferedIO(['123456']);
     $networkActivations = 0;

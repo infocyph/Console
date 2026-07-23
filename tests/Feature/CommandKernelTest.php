@@ -85,6 +85,18 @@ it('parses typed arguments, flags, short options, and multiple values', function
         ->and($io->output())->toBe(['[OK] {"id":42,"force":true,"age":30,"tags":["one","two"]}']);
 });
 
+it('uses command map keys as the authoritative route names', function (): void {
+    $io = new BufferedIO;
+    $application = Application::configure()
+        ->commands(['accounts:create' => KernelFixtureCommand::class])
+        ->io($io)
+        ->build();
+
+    expect($application->run(['tool', 'accounts:create', '42']))->toBe(ExitCode::SUCCESS)
+        ->and($io->output())->toBe(['[OK] {"id":42,"force":false,"age":null,"tags":[]}'])
+        ->and($application->run(['tool', 'users:create', '42']))->toBe(ExitCode::COMMAND_NOT_FOUND);
+});
+
 it('uses the command preflight paths without constructing registered commands', function (): void {
     UnconstructedFixtureCommand::$instances = 0;
     $io = new BufferedIO;

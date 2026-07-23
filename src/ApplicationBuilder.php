@@ -45,7 +45,7 @@ final class ApplicationBuilder
 
     private ?string $commandManifest = null;
 
-    /** @var list<class-string<CommandContract>> */
+    /** @var list<class-string<CommandContract>>|array<string, class-string<CommandContract>> */
     private array $commands = [];
 
     private ?string $completionManifest = null;
@@ -158,7 +158,7 @@ final class ApplicationBuilder
         return $this;
     }
 
-    /** @param list<class-string<CommandContract>> $commands */
+    /** @param list<class-string<CommandContract>>|array<string, class-string<CommandContract>> $commands */
     public function commands(array $commands): self
     {
         $this->commands = $commands;
