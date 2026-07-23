@@ -18,6 +18,8 @@ final class ContainerConfigurator
     /** @var list<Closure(Container): void> */
     private array $configurers = [];
 
+    private ?ContainerProvider $provider = null;
+
     /** @var list<class-string<ServiceProviderInterface>|ServiceProviderInterface> */
     private array $providers = [];
 
@@ -43,6 +45,11 @@ final class ContainerConfigurator
         return $this->configurers;
     }
 
+    public function containerProvider(): ?ContainerProvider
+    {
+        return $this->provider;
+    }
+
     /** @param class-string<ServiceProviderInterface>|ServiceProviderInterface $provider */
     public function provider(string|ServiceProviderInterface $provider): void
     {
@@ -53,5 +60,10 @@ final class ContainerConfigurator
     public function providers(): array
     {
         return $this->providers;
+    }
+
+    public function useContainerProvider(ContainerProvider $provider): void
+    {
+        $this->provider = $provider;
     }
 }

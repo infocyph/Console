@@ -17,19 +17,19 @@
     ],
     "require": {
         "php": "^8.4",
-        "infocyph/arraykit": "^4.4",
-        "infocyph/cachelayer": "^1.4",
-        "infocyph/dblayer": "^2.1",
-        "infocyph/epicrypt": "^1.0.1",
-        "infocyph/intermix": "^7.2.2",
-        "infocyph/otp": "^5.03",
-        "infocyph/pathwise": "^2.5.2",
-        "infocyph/reqshield": "^2.4.1",
-        "infocyph/talkingbytes": "^0.1.1",
-        "infocyph/uid": "^4.2.1"
+        "infocyph/arraykit": "^4.6",
+        "infocyph/cachelayer": "^1.6",
+        "infocyph/dblayer": "^2.1.2",
+        "infocyph/epicrypt": "^1.1",
+        "infocyph/intermix": "^7.2.5",
+        "infocyph/otp": "^5.04",
+        "infocyph/pathwise": "^2.5.3",
+        "infocyph/reqshield": "^2.4.2",
+        "infocyph/talkingbytes": "^0.2",
+        "infocyph/uid": "^4.3"
     },
     "require-dev": {
-        "infocyph/phpforge": "dev-main"
+        "infocyph/phpforge": "dev-main@dev"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,

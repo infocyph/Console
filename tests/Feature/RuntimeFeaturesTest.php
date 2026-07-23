@@ -16,6 +16,8 @@ use Infocyph\Console\Component\Details;
 use Infocyph\Console\Component\HorizontalRule;
 use Infocyph\Console\Component\Paragraph;
 use Infocyph\Console\Configuration\Configuration;
+use Infocyph\Console\Configuration\ConfigurationProvider;
+use Infocyph\Console\Container\ContainerProvider;
 use Infocyph\Console\Discovery\CommandManifestCompiler;
 use Infocyph\Console\Discovery\CompletionManifestCompiler;
 use Infocyph\Console\Discovery\ValidationManifestCompiler;
@@ -137,6 +139,30 @@ final class ConfigurationCommand extends Command
     protected function handle(): int
     {
         $this->io()->success((string) $this->configuration->string('name'));
+
+        return ExitCode::SUCCESS;
+    }
+}
+
+final class ExternalRuntimeCommand extends Command
+{
+    public static int $instances = 0;
+
+    public function __construct(
+        private readonly Configuration $configuration,
+        private readonly InjectedGreeting $greeting,
+    ) {
+        self::$instances++;
+    }
+
+    public static function define(CommandDefinition $command): void
+    {
+        $command->name('external:run')->capabilities([Capability::NETWORK]);
+    }
+
+    protected function handle(): int
+    {
+        $this->io()->success($this->configuration->string('name') . ' ' . $this->greeting->message());
 
         return ExitCode::SUCCESS;
     }
@@ -311,6 +337,96 @@ it('loads validated application configuration only for a resolved command', func
         ->build();
     expect($application->run(['tool', 'config:show']))->toBe(0)
         ->and($io->output())->toBe(['[OK] Console']);
+});
+
+it('lazily reuses external container and configuration providers across command scopes', function (): void {
+    $container = new Container('testing.external');
+    $containerProvider = new class($container) implements ContainerProvider
+    {
+        public int $calls = 0;
+
+        public function __construct(private readonly Container $container) {}
+
+        public function container(): Container
+        {
+            $this->calls++;
+
+            return $this->container;
+        }
+    };
+    $configurationProvider = new class implements ConfigurationProvider
+    {
+        public int $calls = 0;
+
+        public int $profileChanges = 0;
+
+        private ?string $profile = null;
+
+        public function configuration(): Configuration
+        {
+            $this->calls++;
+
+            return Configuration::fromArray(['name' => 'external-' . ($this->profile ?? 'default')]);
+        }
+
+        public function useProfile(?string $profile): void
+        {
+            $this->profileChanges++;
+            $this->profile = $profile;
+        }
+    };
+    $containerConfigurations = 0;
+    $networkActivations = 0;
+    $io = new BufferedIO;
+    ExternalRuntimeCommand::$instances = 0;
+    $application = Application::configure()
+        ->commands([ExternalRuntimeCommand::class])
+        ->containerProvider($containerProvider)
+        ->configurationProvider($configurationProvider)
+        ->configureContainer(function (Container $configured) use (&$containerConfigurations): void {
+            $containerConfigurations++;
+            $configured->definitions()->bind(InjectedGreeting::class, new InjectedGreeting);
+        })
+        ->configureCapability(Capability::NETWORK, function () use (&$networkActivations): void {
+            $networkActivations++;
+        })
+        ->io($io)
+        ->build();
+
+    expect($application->run(['tool', '--version']))->toBe(ExitCode::SUCCESS)
+        ->and($containerProvider->calls)->toBe(0)
+        ->and($configurationProvider->calls)->toBe(0)
+        ->and($configurationProvider->profileChanges)->toBe(0)
+        ->and($containerConfigurations)->toBe(0)
+        ->and($networkActivations)->toBe(0)
+        ->and($application->run(['tool', '--profile=one', 'external:run']))->toBe(ExitCode::SUCCESS)
+        ->and($application->run(['tool', '--profile=two', 'external:run']))->toBe(ExitCode::SUCCESS)
+        ->and($containerProvider->calls)->toBe(2)
+        ->and($configurationProvider->calls)->toBe(2)
+        ->and($configurationProvider->profileChanges)->toBe(2)
+        ->and($containerConfigurations)->toBe(1)
+        ->and($networkActivations)->toBe(1)
+        ->and(ExternalRuntimeCommand::$instances)->toBe(2)
+        ->and($io->output())->toContain('[OK] external-one Injected service resolved.')
+        ->toContain('[OK] external-two Injected service resolved.');
+});
+
+it('rejects ambiguous local and external configuration sources', function (): void {
+    $provider = new class implements ConfigurationProvider
+    {
+        public function configuration(): Configuration
+        {
+            return Configuration::fromArray([]);
+        }
+
+        public function useProfile(?string $profile): void {}
+    };
+
+    expect(fn() => Application::configure()
+        ->configuration(['name' => 'local'])
+        ->configurationProvider($provider)
+        ->build())
+        ->toThrow(LogicException::class, 'cannot be combined');
 });
 
 it('loads compiled command metadata without executing definitions at runtime', function (): void {

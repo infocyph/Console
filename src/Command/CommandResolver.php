@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Infocyph\Console\Command;
 
-use Infocyph\Console\Configuration\ConfigurationRepository;
+use Infocyph\Console\Configuration\ConfigurationProvider;
 use Infocyph\Console\Container\CommandScope;
 use Infocyph\Console\Container\ContainerConfigurator;
 use Infocyph\Console\Container\ContainerFactory;
@@ -23,22 +23,22 @@ final readonly class CommandResolver
 {
     public function __construct(
         private ContainerFactory $factory,
-        private ContainerConfigurator $configuration,
+        private ContainerConfigurator $containerConfiguration,
         private InputValidator $validator,
         private CapabilityLoader $capabilities,
         private CommandOtpAuthorizer $otp,
-        private ConfigurationRepository $configurationRepository,
+        private ConfigurationProvider $configuration,
         private ?CommandAuthorizationPolicy $authorizationPolicy = null,
     ) {}
 
     public function run(CommandDescriptor $descriptor, ParsedInput $input, IO $io): int
     {
         $input = $this->validator->validate($descriptor, $input);
-        $container = $this->factory->create($this->configuration);
+        $container = $this->factory->create($this->containerConfiguration);
         $execution = $this->capabilities->load($container, $descriptor);
         $scope = new CommandScope($container, 'command.' . bin2hex(random_bytes(8)));
         $context = new CommandContext($input, $io, $execution);
-        $scope->enter($context);
+        $scope->enter($context, $descriptor->class());
 
         try {
             if ($this->authorizationPolicy !== null && !$this->authorizationPolicy->authorize($descriptor, $context)) {
@@ -58,6 +58,6 @@ final readonly class CommandResolver
 
     public function useProfile(?string $profile): void
     {
-        $this->configurationRepository->useProfile($profile);
+        $this->configuration->useProfile($profile);
     }
 }

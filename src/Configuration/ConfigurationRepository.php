@@ -7,7 +7,7 @@ namespace Infocyph\Console\Configuration;
 use Infocyph\Console\Exception\UsageException;
 
 /** @internal */
-final class ConfigurationRepository
+final class ConfigurationRepository implements ConfigurationProvider
 {
     private ?Configuration $configuration = null;
 

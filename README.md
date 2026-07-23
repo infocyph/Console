@@ -116,6 +116,32 @@ Reusable Console-specific services include `Workspace` for safe atomic files,
 `ReleaseSignatureVerifier`, and `RemoteClient`. Database connections and HTTP
 clients remain application-configured; Console never opens them automatically.
 
+## Framework integration
+
+Frameworks can provide their existing InterMix container and configuration
+repository without creating a second infrastructure graph. Providers remain
+lazy: version, help, list, and completion paths do not request either provider.
+
+```php
+use Infocyph\Console\Application;
+
+$application = Application::configure()
+    ->containerProvider($frameworkContainerProvider)
+    ->configurationProvider($frameworkConfigurationProvider)
+    ->commands($commands)
+    ->build();
+```
+
+`ContainerProvider::container()` is called only when a real command is
+dispatched. Console applies its configured providers and bindings once to each
+returned container, then creates a fresh command scope for every execution.
+
+`ConfigurationProvider` owns profile selection and returns a
+`Configuration`. Use `Configuration::fromConfig()` to wrap an existing
+ArrayKit configuration repository without copying or eagerly materializing it.
+Local Console configuration layers, files, profiles, and validation cannot be
+combined with an external provider, avoiding ambiguous precedence.
+
 ```php
 use Infocyph\Console\Application;
 use Infocyph\Console\Command\Command;

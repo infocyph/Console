@@ -22,12 +22,14 @@ final class CommandScope
 
     public function __construct(private readonly Container $container, private readonly string $name) {}
 
-    public function enter(CommandContext $context): void
+    /** @param class-string<\Infocyph\Console\Command\CommandContract> $command */
+    public function enter(CommandContext $context, string $command): void
     {
         $this->container->enterScope($this->name);
         $this->active = true;
 
         $definitions = $this->container->definitions();
+        $definitions->bind($command, $command, LifetimeEnum::Scoped);
         $definitions->bind(CommandContext::class, $context, LifetimeEnum::Scoped);
         $definitions->bind(ParsedInput::class, $context->input(), LifetimeEnum::Scoped);
         $definitions->bind(ArgumentCollection::class, $context->arguments(), LifetimeEnum::Scoped);

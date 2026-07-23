@@ -10,9 +10,11 @@ use Infocyph\Console\Command\CommandRegistry;
 use Infocyph\Console\Command\CommandResolver;
 use Infocyph\Console\Configuration\Configuration;
 use Infocyph\Console\Configuration\ConfigurationLoader;
+use Infocyph\Console\Configuration\ConfigurationProvider;
 use Infocyph\Console\Configuration\ConfigurationRepository;
 use Infocyph\Console\Container\ContainerConfigurator;
 use Infocyph\Console\Container\ContainerFactory;
+use Infocyph\Console\Container\ContainerProvider;
 use Infocyph\Console\Discovery\CommandDiscoverer;
 use Infocyph\Console\Discovery\CommandManifest;
 use Infocyph\Console\Identity\ExecutionIdGenerator;
@@ -28,6 +30,7 @@ use Infocyph\Console\Validation\InputValidator;
 use Infocyph\Console\Validation\ValidationManifest;
 use Infocyph\DBLayer\Connection\Connection;
 use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
 use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 use Infocyph\ReqShield\Contracts\DatabaseProvider;
 
@@ -64,6 +67,8 @@ final class ApplicationBuilder
 
     private ?ExecutionIdGenerator $executionIds = null;
 
+    private ?ConfigurationProvider $externalConfiguration = null;
+
     private ?IO $io = null;
 
     private string $name = 'console';
@@ -99,10 +104,24 @@ final class ApplicationBuilder
         if ($this->production && $this->commandManifest === null) {
             throw new \LogicException('Production applications require a compiled command manifest.');
         }
-        $repository = new ConfigurationRepository(new ConfigurationLoader(), $this->configurationLayers, $this->configurationFiles, $this->configurationRules, $this->configurationSanitizers, $this->strictConfiguration, $this->configurationProfiles);
-        $this->container->configure(static function (Container $container) use ($repository): void {
-            $container->definitions()->bind(ConfigurationRepository::class, $repository);
-            $container->definitions()->bind(Configuration::class, static fn(): Configuration => $repository->configuration());
+        if ($this->externalConfiguration !== null && (
+            $this->configurationFiles !== []
+            || $this->configurationLayers !== []
+            || $this->configurationProfiles !== []
+            || $this->configurationRules !== []
+            || $this->configurationSanitizers !== []
+            || $this->strictConfiguration
+        )) {
+            throw new \LogicException('An external configuration provider cannot be combined with Console configuration sources or validation.');
+        }
+        $configuration = $this->externalConfiguration ?? new ConfigurationRepository(new ConfigurationLoader(), $this->configurationLayers, $this->configurationFiles, $this->configurationRules, $this->configurationSanitizers, $this->strictConfiguration, $this->configurationProfiles);
+        $this->container->configure(static function (Container $container) use ($configuration): void {
+            $container->definitions()->bind(ConfigurationProvider::class, $configuration);
+            $container->definitions()->bind(
+                Configuration::class,
+                static fn(): Configuration => $configuration->configuration(),
+                LifetimeEnum::Scoped,
+            );
         });
         $io = $this->io ?? ConsoleIO::standard();
         $io->setTheme($this->theme);
@@ -116,7 +135,7 @@ final class ApplicationBuilder
                 new InputValidator($this->validationDatabase, $this->validationManifest === null ? null : ValidationManifest::load($this->validationManifest)),
                 new CapabilityLoader($this->capabilityConfigurers, $this->executionIds),
                 new CommandOtpAuthorizer($this->otpVerifier),
-                $repository,
+                $configuration,
                 $this->authorizationPolicy,
             ),
             $io,
@@ -176,6 +195,13 @@ final class ApplicationBuilder
         return $this;
     }
 
+    public function configurationProvider(ConfigurationProvider $provider): self
+    {
+        $this->externalConfiguration = $provider;
+
+        return $this;
+    }
+
     /** @param \Closure(Container): void $configurer */
     public function configureCapability(Capability $capability, \Closure $configurer): self
     {
@@ -189,6 +215,13 @@ final class ApplicationBuilder
     public function configureContainer(\Closure $configurer): self
     {
         $this->container->configure($configurer);
+
+        return $this;
+    }
+
+    public function containerProvider(ContainerProvider $provider): self
+    {
+        $this->container->useContainerProvider($provider);
 
         return $this;
     }

@@ -4,12 +4,24 @@ declare(strict_types=1);
 
 namespace Infocyph\Console\Configuration;
 
+use Infocyph\ArrayKit\ArrayKit;
 use Infocyph\ArrayKit\Config\Config;
 
 final readonly class Configuration
 {
     /** @internal */
     public function __construct(private Config $config) {}
+
+    /** @param array<array-key, mixed> $configuration */
+    public static function fromArray(array $configuration): self
+    {
+        return new self(ArrayKit::config($configuration));
+    }
+
+    public static function fromConfig(Config $configuration): self
+    {
+        return new self($configuration);
+    }
 
     /** @return array<array-key, mixed> */
     public function all(): array
