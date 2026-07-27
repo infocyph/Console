@@ -18,18 +18,27 @@
     "require": {
         "php": "^8.4",
         "infocyph/arraykit": "^4.6",
-        "infocyph/cachelayer": "^1.6",
-        "infocyph/dblayer": "^2.1.2",
-        "infocyph/epicrypt": "^1.1",
-        "infocyph/intermix": "^7.2.5",
-        "infocyph/otp": "^5.04",
-        "infocyph/pathwise": "^2.5.3",
-        "infocyph/reqshield": "^2.4.2",
-        "infocyph/talkingbytes": "^0.2",
+        "infocyph/intermix": "^7.3.1",
         "infocyph/uid": "^4.3"
     },
     "require-dev": {
-        "infocyph/phpforge": "dev-main@dev"
+        "infocyph/cachelayer": "^1.6",
+        "infocyph/dblayer": "^2.1.2",
+        "infocyph/epicrypt": "^1.1",
+        "infocyph/otp": "^5.04",
+        "infocyph/pathwise": "^2.5.3",
+        "infocyph/phpforge": "dev-main@dev",
+        "infocyph/reqshield": "^2.4.2",
+        "infocyph/talkingbytes": "^0.2"
+    },
+    "suggest": {
+        "infocyph/cachelayer": "Required by CacheLayer command state and mutex adapters.",
+        "infocyph/dblayer": "Required by DBLayer validation, history, and scheduling adapters.",
+        "infocyph/epicrypt": "Required by artifact, release-signature, secret, and secure-configuration adapters.",
+        "infocyph/otp": "Required by the TOTP verifier adapter.",
+        "infocyph/pathwise": "Required by workspace and file-backed security adapters.",
+        "infocyph/reqshield": "Required when command or configuration validation is enabled.",
+        "infocyph/talkingbytes": "Required by the remote communication adapter."
     },
     "minimum-stability": "stable",
     "prefer-stable": true,

@@ -2,12 +2,27 @@
 
 A fast, typed foundation for building modern PHP command-line applications.
 
+## Install
+
+```bash
+composer require infocyph/console
+```
+
+The core installs ArrayKit and InterMix. Capability adapters remain optional:
+install the package used by the selected command, such as
+`infocyph/reqshield` for validation or `infocyph/dblayer` for DBLayer
+persistence. UID is part of the core command-execution lifecycle, but its
+generator remains lazy until a command declares the identity capability.
+Unselected adapters are not initialized or required by preflight and ordinary
+command paths.
+
 ## Current status
 
 Phases 1–9 and 11 of the architecture are implemented:
 
 - Typed command kernel, native argv parsing, and preflight help/list/version.
-- Lazy InterMix command resolution with constructor injection and command scopes.
+- Lazy InterMix command resolution with constructor injection and scope-seeded
+  command state.
 - Capability-aware text, ANSI, and JSON frame rendering.
 - Typed terminal components for tables, trees, boxes, lists, status, progress,
   spinners, and task groups.
@@ -135,12 +150,17 @@ $application = Application::configure()
 `ContainerProvider::container()` is called only when a real command is
 dispatched. Console applies its configured providers and bindings once to each
 returned container, then creates a fresh command scope for every execution.
+Standalone applications lazily create one container and reuse its immutable
+wiring; command context, parsed input, IO, and identity remain isolated through
+InterMix scope seeds and are removed when the command finishes.
 
 `ConfigurationProvider` owns profile selection and returns a
 `Configuration`. Use `Configuration::fromConfig()` to wrap an existing
 ArrayKit configuration repository without copying or eagerly materializing it.
 Local Console configuration layers, files, profiles, and validation cannot be
 combined with an external provider, avoiding ambiguous precedence.
+Configured validation manifests are not included for version, help, list, or
+completion; they are loaded once when a real command first needs validation.
 
 ```php
 use Infocyph\Console\Application;

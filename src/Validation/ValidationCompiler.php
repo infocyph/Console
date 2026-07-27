@@ -22,11 +22,12 @@ final class ValidationCompiler
     /** @param array<string,array{rules:list<string>,sanitizers:list<string>}> $manifest */
     public function compile(CommandDescriptor $command, array $manifest = []): ?CompiledValidation
     {
-        if ($manifest !== []) {
-            return $this->build($command, $manifest);
+        $key = $command->class() . "\0" . $command->name();
+        if (array_key_exists($key, $this->cache)) {
+            return $this->cache[$key];
         }
 
-        return $this->cache[$command->class()] ??= $this->build($command);
+        return $this->cache[$key] = $this->build($command, $manifest);
     }
 
     /** @param array<string,array{rules:list<string>,sanitizers:list<string>}> $manifest */
@@ -57,6 +58,11 @@ final class ValidationCompiler
         }
         if ($rules === []) {
             return null;
+        }
+        if (!class_exists(Validator::class)) {
+            throw new \LogicException(
+                'Command validation requires infocyph/reqshield; install the package or remove the command rules.',
+            );
         }
         $validator = Validator::compile($rules, $this->database)->validator();
         if ($sanitizers !== []) {

@@ -19,15 +19,20 @@ final class CapabilityLoader
     private \WeakMap $loaded;
 
     /** @param array<string, list<Closure(Container): void>> $configurers */
-    public function __construct(private array $configurers = [], private readonly ?ExecutionIdGenerator $ids = null)
+    public function __construct(private array $configurers = [], private ?ExecutionIdGenerator $generator = null)
     {
         $this->loaded = new \WeakMap();
     }
 
     public function load(Container $container, CommandDescriptor $command): ?CommandExecution
     {
+        $loaded = $this->loaded[$container] ?? [];
+        $identity = false;
+        $changed = false;
         foreach ($command->capabilities() as $capability) {
-            $loaded = $this->loaded[$container] ?? [];
+            if ($capability === Capability::IDENTITY) {
+                $identity = true;
+            }
             if (isset($loaded[$capability->value])) {
                 continue;
             }
@@ -37,15 +42,22 @@ final class CapabilityLoader
             }
 
             $loaded[$capability->value] = true;
+            $changed = true;
+        }
+        if ($changed) {
             $this->loaded[$container] = $loaded;
         }
 
-        if (!in_array(Capability::IDENTITY, $command->capabilities(), true)) {
+        if (!$identity) {
             return null;
         }
 
-        $generator = $this->ids ?? new UidExecutionIdGenerator();
-        $container->definitions()->bind(ExecutionIdGenerator::class, $generator);
+        $generator = $this->generator ??= new UidExecutionIdGenerator();
+        if (!isset($loaded[ExecutionIdGenerator::class])) {
+            $container->definitions()->bind(ExecutionIdGenerator::class, $generator);
+            $loaded[ExecutionIdGenerator::class] = true;
+            $this->loaded[$container] = $loaded;
+        }
 
         return new CommandExecution($generator->generate(), $command->name(), time());
     }

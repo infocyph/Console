@@ -6,7 +6,7 @@ namespace Infocyph\Console;
 
 use Infocyph\Console\Command\CommandDescriptor;
 use Infocyph\Console\Command\CommandRegistry;
-use Infocyph\Console\Command\CommandResolver;
+use Infocyph\Console\Command\CommandResolverProvider;
 use Infocyph\Console\Command\ExitCode;
 use Infocyph\Console\Completion\CompletionManifest;
 use Infocyph\Console\Completion\ShellCompletionGenerator;
@@ -26,7 +26,7 @@ final readonly class Application
     public function __construct(
         private ApplicationMetadata $metadata,
         private CommandRegistry $registry,
-        private CommandResolver $commands,
+        private CommandResolverProvider $commands,
         private IO $io,
         private ?string $completionManifest = null,
     ) {}
@@ -103,10 +103,11 @@ final readonly class Application
                 return ExitCode::SUCCESS;
             }
 
-            $this->commands->useProfile($global['profile']);
+            $commands = $this->commands->get();
+            $commands->useProfile($global['profile']);
             $input = new ArgvParser()->parse($descriptor, $commandTokens);
 
-            return $this->commands->run($descriptor, $input, $io);
+            return $commands->run($descriptor, $input, $io);
         } catch (ValidationFailedException $exception) {
             $io->validationFailures(array_map(static fn($failure): array => $failure->toArray(), $exception->failures()));
 

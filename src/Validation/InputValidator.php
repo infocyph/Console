@@ -11,17 +11,24 @@ use Infocyph\Console\Input\ParsedInput;
 use Infocyph\ReqShield\Contracts\DatabaseProvider;
 
 /** @internal */
-final readonly class InputValidator
+final class InputValidator
 {
-    private ValidationCompiler $compiler;
+    private readonly ValidationCompiler $compiler;
 
-    public function __construct(?DatabaseProvider $database = null, private ?ValidationManifest $manifest = null)
-    {
+    private ?ValidationManifest $manifest = null;
+
+    public function __construct(
+        ?DatabaseProvider $database = null,
+        private readonly ?string $manifestPath = null,
+    ) {
         $this->compiler = new ValidationCompiler($database);
     }
 
     public function validate(CommandDescriptor $command, ParsedInput $input): ParsedInput
     {
+        if ($this->manifest === null && $this->manifestPath !== null) {
+            $this->manifest = ValidationManifest::load($this->manifestPath);
+        }
         $compiled = $this->compiler->compile($command, $this->manifest?->for($command->name()) ?? []);
         if ($compiled === null) {
             return $input;

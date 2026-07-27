@@ -8,6 +8,7 @@ use Infocyph\Console\Command\Capability;
 use Infocyph\Console\Command\CommandContract;
 use Infocyph\Console\Command\CommandRegistry;
 use Infocyph\Console\Command\CommandResolver;
+use Infocyph\Console\Command\CommandResolverProvider;
 use Infocyph\Console\Configuration\Configuration;
 use Infocyph\Console\Configuration\ConfigurationLoader;
 use Infocyph\Console\Configuration\ConfigurationProvider;
@@ -27,7 +28,6 @@ use Infocyph\Console\Security\CommandAuthorizationPolicy;
 use Infocyph\Console\Style\Theme;
 use Infocyph\Console\Validation\DBLayerDatabaseProvider;
 use Infocyph\Console\Validation\InputValidator;
-use Infocyph\Console\Validation\ValidationManifest;
 use Infocyph\DBLayer\Connection\Connection;
 use Infocyph\InterMix\DI\Container;
 use Infocyph\InterMix\DI\Support\LifetimeEnum;
@@ -114,29 +114,71 @@ final class ApplicationBuilder
         )) {
             throw new \LogicException('An external configuration provider cannot be combined with Console configuration sources or validation.');
         }
-        $configuration = $this->externalConfiguration ?? new ConfigurationRepository(new ConfigurationLoader(), $this->configurationLayers, $this->configurationFiles, $this->configurationRules, $this->configurationSanitizers, $this->strictConfiguration, $this->configurationProfiles);
-        $this->container->configure(static function (Container $container) use ($configuration): void {
-            $container->definitions()->bind(ConfigurationProvider::class, $configuration);
-            $container->definitions()->bind(
-                Configuration::class,
-                static fn(): Configuration => $configuration->configuration(),
-                LifetimeEnum::Scoped,
-            );
-        });
         $io = $this->io ?? ConsoleIO::standard();
         $io->setTheme($this->theme);
+        $container = $this->container;
+        $externalConfiguration = $this->externalConfiguration;
+        $configurationLayers = $this->configurationLayers;
+        $configurationFiles = $this->configurationFiles;
+        $configurationRules = $this->configurationRules;
+        $configurationSanitizers = $this->configurationSanitizers;
+        $strictConfiguration = $this->strictConfiguration;
+        $configurationProfiles = $this->configurationProfiles;
+        $validationDatabase = $this->validationDatabase;
+        $validationManifest = $this->validationManifest;
+        $capabilityConfigurers = $this->capabilityConfigurers;
+        $executionIds = $this->executionIds;
+        $otpVerifier = $this->otpVerifier;
+        $authorizationPolicy = $this->authorizationPolicy;
 
         return new Application(
             new ApplicationMetadata($this->name, $this->version),
             $this->commandManifest === null ? new CommandRegistry($this->commands) : CommandManifest::registry($this->commandManifest),
-            new CommandResolver(
-                new ContainerFactory(),
-                $this->container,
-                new InputValidator($this->validationDatabase, $this->validationManifest === null ? null : ValidationManifest::load($this->validationManifest)),
-                new CapabilityLoader($this->capabilityConfigurers, $this->executionIds),
-                new CommandOtpAuthorizer($this->otpVerifier),
-                $configuration,
-                $this->authorizationPolicy,
+            new CommandResolverProvider(
+                static function () use (
+                    $authorizationPolicy,
+                    $capabilityConfigurers,
+                    $configurationFiles,
+                    $configurationLayers,
+                    $configurationProfiles,
+                    $configurationRules,
+                    $configurationSanitizers,
+                    $container,
+                    $executionIds,
+                    $externalConfiguration,
+                    $otpVerifier,
+                    $strictConfiguration,
+                    $validationDatabase,
+                    $validationManifest,
+                ): CommandResolver {
+                    $configuration = $externalConfiguration ?? new ConfigurationRepository(
+                        new ConfigurationLoader(),
+                        $configurationLayers,
+                        $configurationFiles,
+                        $configurationRules,
+                        $configurationSanitizers,
+                        $strictConfiguration,
+                        $configurationProfiles,
+                    );
+                    $container->configure(static function (Container $container) use ($configuration): void {
+                        $container->definitions()->bind(ConfigurationProvider::class, $configuration);
+                        $container->bindFactory(
+                            Configuration::class,
+                            static fn(): Configuration => $configuration->configuration(),
+                            LifetimeEnum::Scoped,
+                        );
+                    });
+
+                    return new CommandResolver(
+                        new ContainerFactory(),
+                        $container,
+                        new InputValidator($validationDatabase, $validationManifest),
+                        new CapabilityLoader($capabilityConfigurers, $executionIds),
+                        new CommandOtpAuthorizer($otpVerifier),
+                        $configuration,
+                        $authorizationPolicy,
+                    );
+                },
             ),
             $io,
             $this->completionManifest,

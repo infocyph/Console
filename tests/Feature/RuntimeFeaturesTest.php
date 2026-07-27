@@ -25,6 +25,7 @@ use Infocyph\Console\Filesystem\Workspace;
 use Infocyph\Console\Identity\CommandExecution;
 use Infocyph\Console\Input\Argument;
 use Infocyph\Console\Input\Option;
+use Infocyph\Console\Input\ParsedInput;
 use Infocyph\Console\Input\ValueType;
 use Infocyph\Console\IO\BufferedIO;
 use Infocyph\Console\IO\ConsoleIO;
@@ -407,8 +408,28 @@ it('lazily reuses external container and configuration providers across command 
         ->and($containerConfigurations)->toBe(1)
         ->and($networkActivations)->toBe(1)
         ->and(ExternalRuntimeCommand::$instances)->toBe(2)
+        ->and($container->has(CommandContext::class))->toBeFalse()
+        ->and($container->has(ParsedInput::class))->toBeFalse()
         ->and($io->output())->toContain('[OK] external-one Injected service resolved.')
         ->toContain('[OK] external-two Injected service resolved.');
+});
+
+it('lazily creates and reuses one standalone container across isolated command scopes', function (): void {
+    $configurations = 0;
+    $io = new BufferedIO;
+    $application = Application::configure()
+        ->commands([InjectedCommand::class])
+        ->configureContainer(function (Container $container) use (&$configurations): void {
+            $configurations++;
+            $container->definitions()->bind(InjectedGreeting::class, new InjectedGreeting);
+        })
+        ->io($io)
+        ->build();
+
+    expect($configurations)->toBe(0)
+        ->and($application->run(['tool', 'injected']))->toBe(ExitCode::SUCCESS)
+        ->and($application->run(['tool', 'injected']))->toBe(ExitCode::SUCCESS)
+        ->and($configurations)->toBe(1);
 });
 
 it('rejects ambiguous local and external configuration sources', function (): void {
@@ -766,6 +787,32 @@ it('loads compiled validation metadata and emits shell completion without comman
     unlink($validation);
     unlink($completion);
     rmdir($directory);
+});
+
+it('loads a validation manifest only when a real command is dispatched', function (): void {
+    $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-lazy-validation-'.bin2hex(random_bytes(4)).'.php';
+    file_put_contents(
+        $path,
+        '<?php $GLOBALS["console_validation_manifest_loads"]++; return [];',
+    );
+    $GLOBALS['console_validation_manifest_loads'] = 0;
+
+    try {
+        $application = Application::configure()
+            ->commands([NetworkCapabilityCommand::class])
+            ->validationManifest($path)
+            ->io(new BufferedIO)
+            ->build();
+
+        expect($GLOBALS['console_validation_manifest_loads'])->toBe(0)
+            ->and($application->run(['tool', '--version']))->toBe(ExitCode::SUCCESS)
+            ->and($GLOBALS['console_validation_manifest_loads'])->toBe(0)
+            ->and($application->run(['tool', 'remote:check']))->toBe(ExitCode::SUCCESS)
+            ->and($GLOBALS['console_validation_manifest_loads'])->toBe(1);
+    } finally {
+        unlink($path);
+        unset($GLOBALS['console_validation_manifest_loads']);
+    }
 });
 
 it('renders custom themes, semantic components, prompt filtering, and actionable suggestions', function (): void {

@@ -17,10 +17,11 @@ final class ArgvParser
     {
         $longOptions = [];
         $shortOptions = [];
-        $values = $this->optionDefaults($command->options());
+        $values = [];
 
         foreach ($command->options() as $option) {
             $longOptions[$option->name()] = $option;
+            $values[$option->name()] = $this->defaultValue($option);
             if ($option->shortName() !== null) {
                 $shortOptions[$option->shortName()] = $option;
             }
@@ -30,7 +31,8 @@ final class ArgvParser
         $positionals = [];
         $endOfOptions = false;
 
-        for ($index = 0; $index < count($tokens); $index++) {
+        $tokenCount = count($tokens);
+        for ($index = 0; $index < $tokenCount; $index++) {
             $token = $tokens[$index];
 
             if ($endOfOptions) {
@@ -152,20 +154,6 @@ final class ArgvParser
     }
 
     /**
-     * @param list<Option> $options
-     * @return array<string,mixed>
-     */
-    private function optionDefaults(array $options): array
-    {
-        $values = [];
-        foreach ($options as $option) {
-            $values[$option->name()] = $this->defaultValue($option);
-        }
-
-        return $values;
-    }
-
-    /**
      * @param list<Argument> $definitions
      * @param list<string> $positionals
      * @return array<string, mixed>
@@ -224,6 +212,8 @@ final class ArgvParser
      * @param array<string, Option> $options
      * @param array<string, true> $seen
      * @param array<string, mixed> $values
+     * @param-out array<string, true> $seen
+     * @param-out array<string, mixed> $values
      */
     private function parseLongOption(string $token, array $tokens, int &$index, array $options, array &$seen, array &$values): void
     {
@@ -240,7 +230,7 @@ final class ArgvParser
             if (!$option->isNegatable() || $inlineValue !== null) {
                 throw new UsageException(sprintf('Option "--%s" is not defined.', $name));
             }
-            [$seen, $values] = $this->storeOption($option, false, $seen, $values);
+            $this->storeOption($option, false, $seen, $values);
 
             return;
         }
@@ -249,7 +239,7 @@ final class ArgvParser
             if ($inlineValue !== null) {
                 throw new UsageException(sprintf('Option "--%s" does not accept a value.', $name));
             }
-            [$seen, $values] = $this->storeOption($option, true, $seen, $values);
+            $this->storeOption($option, true, $seen, $values);
 
             return;
         }
@@ -262,7 +252,12 @@ final class ArgvParser
             $inlineValue = $tokens[$index];
         }
 
-        [$seen, $values] = $this->storeOption($option, $this->convert($inlineValue, $option->valueType(), '--' . $name), $seen, $values);
+        $this->storeOption(
+            $option,
+            $this->convert($inlineValue, $option->valueType(), '--' . $name),
+            $seen,
+            $values,
+        );
     }
 
     /**
@@ -270,11 +265,14 @@ final class ArgvParser
      * @param array<string, Option> $options
      * @param array<string, true> $seen
      * @param array<string, mixed> $values
+     * @param-out array<string, true> $seen
+     * @param-out array<string, mixed> $values
      */
     private function parseShortOptions(string $token, array $tokens, int &$index, array $options, array &$seen, array &$values): void
     {
         $shortcuts = substr($token, 1);
-        for ($offset = 0; $offset < strlen($shortcuts); $offset++) {
+        $shortcutCount = strlen($shortcuts);
+        for ($offset = 0; $offset < $shortcutCount; $offset++) {
             $shortcut = $shortcuts[$offset];
             $option = $options[$shortcut] ?? null;
             if ($option === null) {
@@ -282,7 +280,7 @@ final class ArgvParser
             }
 
             if (!$option->acceptsValue()) {
-                [$seen, $values] = $this->storeOption($option, true, $seen, $values);
+                $this->storeOption($option, true, $seen, $values);
 
                 continue;
             }
@@ -296,14 +294,24 @@ final class ArgvParser
                 $value = $tokens[$index];
             }
 
-            [$seen, $values] = $this->storeOption($option, $this->convert($value, $option->valueType(), '-' . $shortcut), $seen, $values);
+            $this->storeOption(
+                $option,
+                $this->convert($value, $option->valueType(), '-' . $shortcut),
+                $seen,
+                $values,
+            );
 
             return;
         }
     }
 
-    /** @param array<string, true> $seen @param array<string, mixed> $values @return array{array<string,true>,array<string,mixed>} */
-    private function storeOption(Option $option, mixed $value, array $seen, array $values): array
+    /**
+     * @param array<string, true> $seen
+     * @param array<string, mixed> $values
+     * @param-out array<string, true> $seen
+     * @param-out array<string, mixed> $values
+     */
+    private function storeOption(Option $option, mixed $value, array &$seen, array &$values): void
     {
         $name = $option->name();
         if (isset($seen[$name]) && !$option->multipleValues()) {
@@ -314,12 +322,10 @@ final class ArgvParser
         if ($option->multipleValues()) {
             $values[$name][] = $value;
 
-            return [$seen, $values];
+            return;
         }
 
         $values[$name] = $value;
-
-        return [$seen, $values];
     }
 
     /** @param list<string> $candidates */

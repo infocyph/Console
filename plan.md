@@ -166,29 +166,33 @@ infocyph/foundation
 
 ## Runtime dependencies
 
-All Infocyph packages directly used by Console belong in `require`.
+Packages used by every installation belong in `require`. Capability adapters
+may remain in `suggest` when their classes are loaded only after the
+corresponding feature is selected.
 
 ```json
 {
     "require": {
         "php": "^8.4",
         "infocyph/arraykit": "<compatible-version>",
-        "infocyph/cachelayer": "<compatible-version>",
-        "infocyph/dblayer": "<compatible-version>",
-        "infocyph/epicrypt": "<compatible-version>",
         "infocyph/intermix": "<compatible-version>",
-        "infocyph/otp": "<compatible-version>",
-        "infocyph/pathwise": "<compatible-version>",
-        "infocyph/reqshield": "<compatible-version>",
-        "infocyph/talkingbytes": "<compatible-version>",
         "infocyph/uid": "<compatible-version>"
+    },
+    "suggest": {
+        "infocyph/cachelayer": "<capability adapter>",
+        "infocyph/dblayer": "<capability adapter>",
+        "infocyph/epicrypt": "<capability adapter>",
+        "infocyph/otp": "<capability adapter>",
+        "infocyph/pathwise": "<capability adapter>",
+        "infocyph/reqshield": "<capability adapter>",
+        "infocyph/talkingbytes": "<capability adapter>"
     }
 }
 ```
 
-The final constraints should be selected after installing and testing the complete dependency graph together.
-
-These packages must not be placed under `suggest` when Console ships functionality that directly imports or executes them.
+UID is a core command-execution dependency but its generator remains lazy until
+an identity-capable command is selected. Capability adapters remain optional
+and must fail clearly only when their corresponding feature is requested.
 
 ## Development dependencies
 
@@ -226,10 +230,13 @@ Console should provide only its integration layer:
 ```text
 ContainerFactory
 ContainerConfigurator
-CommandScope
 CommandResolver
-CompiledContainerLoader
+CommandResolverProvider
 ```
+
+Command state is supplied through InterMix scope seeds. Console must not mutate
+container definitions for context, input, arguments, options, IO, or execution
+identity on every dispatch.
 
 Example:
 
@@ -857,9 +864,7 @@ console/
 │   │
 │   ├── Container/
 │   │   ├── ContainerFactory.php
-│   │   ├── ContainerConfigurator.php
-│   │   ├── CommandScope.php
-│   │   └── CompiledContainerLoader.php
+│   │   └── ContainerConfigurator.php
 │   │
 │   ├── Configuration/
 │   │   ├── Configuration.php
@@ -1117,13 +1122,13 @@ Resolve command descriptor
     ↓
 Parse command-specific input
     ↓
+Validate semantic input
+    ↓
 Resolve declared capabilities
     ↓
-Create command scope
+Enter command scope with ready-instance seeds
     ↓
 Load required services
-    ↓
-Validate semantic input
     ↓
 Construct selected command
     ↓

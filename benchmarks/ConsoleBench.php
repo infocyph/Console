@@ -9,6 +9,9 @@ use Infocyph\Console\Command\Command;
 use Infocyph\Console\Command\CommandDefinition;
 use Infocyph\Console\Command\ExitCode;
 use Infocyph\Console\Container\ContainerProvider;
+use Infocyph\Console\Input\Argument;
+use Infocyph\Console\Input\Option;
+use Infocyph\Console\Input\ValueType;
 use Infocyph\Console\IO\BufferedIO;
 use Infocyph\InterMix\DI\Container;
 use PhpBench\Attributes as Bench;
@@ -21,6 +24,8 @@ final class ConsoleBench
     private Application $external;
 
     private Application $standalone;
+
+    private Application $typed;
 
     public function setUp(): void
     {
@@ -41,6 +46,11 @@ final class ConsoleBench
         $this->external = Application::configure()
             ->commands([BenchmarkCommand::class])
             ->containerProvider($provider)
+            ->io(new BufferedIO())
+            ->build();
+
+        $this->typed = Application::configure()
+            ->commands([BenchmarkTypedCommand::class])
             ->io(new BufferedIO())
             ->build();
     }
@@ -70,6 +80,20 @@ final class ConsoleBench
     {
         $this->standalone->run(['console', '--quiet', 'benchmark:noop']);
     }
+
+    #[Bench\BeforeMethods('setUp')]
+    public function benchTypedInputDispatch(): void
+    {
+        $this->typed->run([
+            'console',
+            '--quiet',
+            'benchmark:typed',
+            '42',
+            '--force',
+            '--tag=one',
+            '--tag=two',
+        ]);
+    }
 }
 
 final class BenchmarkCommand extends Command
@@ -77,6 +101,23 @@ final class BenchmarkCommand extends Command
     public static function define(CommandDefinition $command): void
     {
         $command->name('benchmark:noop');
+    }
+
+    protected function handle(): int
+    {
+        return ExitCode::SUCCESS;
+    }
+}
+
+final class BenchmarkTypedCommand extends Command
+{
+    public static function define(CommandDefinition $command): void
+    {
+        $command
+            ->name('benchmark:typed')
+            ->argument(Argument::required('id')->type(ValueType::INTEGER))
+            ->option(Option::flag('force'))
+            ->option(Option::multiple('tag'));
     }
 
     protected function handle(): int

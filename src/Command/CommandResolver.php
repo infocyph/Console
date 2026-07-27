@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Infocyph\Console\Command;
 
 use Infocyph\Console\Configuration\ConfigurationProvider;
-use Infocyph\Console\Container\CommandScope;
 use Infocyph\Console\Container\ContainerConfigurator;
 use Infocyph\Console\Container\ContainerFactory;
 use Infocyph\Console\Exception\AuthorizationDeniedException;
+use Infocyph\Console\Identity\CommandExecution;
 use Infocyph\Console\Infrastructure\CapabilityLoader;
+use Infocyph\Console\Input\ArgumentCollection;
+use Infocyph\Console\Input\OptionCollection;
 use Infocyph\Console\Input\ParsedInput;
 use Infocyph\Console\IO\IO;
 use Infocyph\Console\Otp\CommandOtpAuthorizer;
@@ -36,9 +38,18 @@ final readonly class CommandResolver
         $input = $this->validator->validate($descriptor, $input);
         $container = $this->factory->create($this->containerConfiguration);
         $execution = $this->capabilities->load($container, $descriptor);
-        $scope = new CommandScope($container, 'command.' . bin2hex(random_bytes(8)));
         $context = new CommandContext($input, $io, $execution);
-        $scope->enter($context, $descriptor->class());
+        $instances = [
+            CommandContext::class => $context,
+            ParsedInput::class => $input,
+            ArgumentCollection::class => $input->arguments(),
+            OptionCollection::class => $input->options(),
+            IO::class => $io,
+        ];
+        if ($execution !== null) {
+            $instances[CommandExecution::class] = $execution;
+        }
+        $container->enterScope('command.' . spl_object_id($context), $instances);
 
         try {
             if ($this->authorizationPolicy !== null && !$this->authorizationPolicy->authorize($descriptor, $context)) {
@@ -52,7 +63,7 @@ final readonly class CommandResolver
 
             return $command->run($context);
         } finally {
-            $scope->leave();
+            $container->leaveScope();
         }
     }
 

@@ -16,6 +16,11 @@ final class ConfigurationValidator
         if ($rules === []) {
             return $configuration;
         }
+        if (!class_exists(Validator::class)) {
+            throw new \LogicException(
+                'Configuration validation requires infocyph/reqshield; install the package or remove the configuration rules.',
+            );
+        }
         $validator = Validator::make($rules);
         if ($sanitizers !== []) {
             $validator->setSanitizers($sanitizers);
