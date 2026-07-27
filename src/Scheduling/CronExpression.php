@@ -46,31 +46,39 @@ final readonly class CronExpression
         return true;
     }
 
+    /**
+     * @param array{int,int} $range
+     * @return list<int>
+     */
+    private function candidateValues(int $value, array $range): array
+    {
+        return $range[1] === 7 && $value === 0 ? [0, 7] : [$value];
+    }
+
     /** @param array{int,int} $range */
     private function matchesPart(string $part, int $value, array $range): bool
     {
-        foreach (explode(',', $part) as $segment) {
-            [$base, $step] = array_pad(explode('/', $segment, 2), 2, null);
-            $step = $step === null ? 1 : (int) $step;
-            if ($step < 1) {
-                continue;
-            }
-            if ($base === '*') {
-                if (($value - $range[0]) % $step === 0) {
-                    return true;
-                }
+        return array_any(explode(',', $part), fn($segment) => $this->matchesSegment($segment, $value, $range));
+    }
 
-                continue;
-            }
-            [$start, $end] = str_contains((string) $base, '-') ? array_map(intval(...), explode('-', (string) $base, 2)) : [(int) $base, (int) $base];
-            foreach ($range[1] === 7 && $value === 0 ? [0, 7] : [$value] as $candidate) {
-                if ($candidate >= $start && $candidate <= $end && ($candidate - $start) % $step === 0) {
-                    return true;
-                }
-            }
+    /** @param array{int,int} $range */
+    private function matchesSegment(string $segment, int $value, array $range): bool
+    {
+        $parts = explode('/', $segment, 2);
+        $base = $parts[0];
+        $rawStep = $parts[1] ?? null;
+        $step = $rawStep === null ? 1 : (int) $rawStep;
+        if ($step < 1) {
+            return false;
         }
 
-        return false;
+        if ($base === '*') {
+            return ($value - $range[0]) % $step === 0;
+        }
+
+        [$start, $end] = $this->segmentRange($base);
+
+        return array_any($this->candidateValues($value, $range), fn($candidate) => $candidate >= $start && $candidate <= $end && ($candidate - $start) % $step === 0);
     }
 
     /** @return array{int,int} */
@@ -81,27 +89,56 @@ final readonly class CronExpression
         };
     }
 
+    /** @return array{int,int} */
+    private function segmentRange(string $base): array
+    {
+        if (!str_contains($base, '-')) {
+            return [(int) $base, (int) $base];
+        }
+
+        $parts = explode('-', $base, 2);
+
+        return [(int) $parts[0], (int) $parts[1]];
+    }
+
     /** @param array{int,int} $range */
     private function validate(string $part, array $range): void
     {
         foreach (explode(',', $part) as $segment) {
-            if (!preg_match('/^(\*|\d+(?:-\d+)?)(?:\/\d+)?$/', $segment)) {
-                throw new \InvalidArgumentException(sprintf('Invalid cron segment "%s".', $segment));
+            $this->validateSegment($segment, $range);
+        }
+    }
+
+    /** @param array{int,int} $range */
+    private function validateSegment(string $segment, array $range): void
+    {
+        if (preg_match('/^(\*|\d+(?:-\d+)?)(?:\/\d+)?$/', $segment) !== 1) {
+            throw new \InvalidArgumentException(sprintf('Invalid cron segment "%s".', $segment));
+        }
+
+        $parts = explode('/', $segment, 2);
+        $base = $parts[0];
+        $step = $parts[1] ?? null;
+        if ($step !== null && (int) $step < 1) {
+            throw new \InvalidArgumentException('Cron steps must be positive.');
+        }
+
+        if (str_contains($base, '-')) {
+            [$start, $end] = $this->segmentRange($base);
+            if ($start > $end) {
+                throw new \InvalidArgumentException('Cron ranges must be ascending.');
             }
-            [$base, $step] = array_pad(explode('/', $segment, 2), 2, null);
-            if ($step !== null && (int) $step < 1) {
-                throw new \InvalidArgumentException('Cron steps must be positive.');
-            }
-            if (str_contains((string) $base, '-')) {
-                [$start, $end] = array_map(intval(...), explode('-', (string) $base, 2));
-                if ($start > $end) {
-                    throw new \InvalidArgumentException('Cron ranges must be ascending.');
-                }
-            }
-            foreach (preg_split('/[-\/]/', $segment) ?: [] as $value) {
-                if ($value !== '*' && ((int) $value < $range[0] || (int) $value > $range[1])) {
-                    throw new \InvalidArgumentException(sprintf('Cron value "%s" is out of range.', $value));
-                }
+        }
+
+        $this->validateValues($segment, $range);
+    }
+
+    /** @param array{int,int} $range */
+    private function validateValues(string $segment, array $range): void
+    {
+        foreach (preg_split('/[-\/]/', $segment) ?: [] as $value) {
+            if ($value !== '*' && ((int) $value < $range[0] || (int) $value > $range[1])) {
+                throw new \InvalidArgumentException(sprintf('Cron value "%s" is out of range.', $value));
             }
         }
     }

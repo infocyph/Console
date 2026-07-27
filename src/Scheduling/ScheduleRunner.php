@@ -11,7 +11,10 @@ final readonly class ScheduleRunner
 {
     public function __construct(private ?CommandMutex $mutex = null, private ?ScheduleStateRepository $state = null) {}
 
-    /** @param callable(string): int $executor @return list<ScheduleRun> */
+    /**
+     * @param callable(string): int $executor
+     * @return list<ScheduleRun>
+     */
     public function runDue(Schedule $schedule, callable $executor, ?\DateTimeInterface $now = null): array
     {
         $now ??= new \DateTimeImmutable();

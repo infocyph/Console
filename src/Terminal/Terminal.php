@@ -6,12 +6,19 @@ namespace Infocyph\Console\Terminal;
 
 final readonly class Terminal
 {
-    /** @param resource $output @param resource $error */
+    /**
+     * @param resource $output
+     * @param resource $error
+     */
     public function __construct(
         private mixed $output,
         private mixed $error,
         private TerminalCapabilities $capabilities,
-    ) {}
+    ) {
+        if (!is_resource($output) || !is_resource($error)) {
+            throw new \InvalidArgumentException('Terminal output streams must be resources.');
+        }
+    }
 
     public static function standard(?TerminalCapabilities $capabilities = null): self
     {

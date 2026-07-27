@@ -452,50 +452,80 @@ it('rejects ambiguous local and external configuration sources', function (): vo
 
 it('loads compiled command metadata without executing definitions at runtime', function (): void {
     $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-manifest-'.bin2hex(random_bytes(6)).'.php';
+    $compiler = new CommandManifestCompiler;
     try {
         ManifestCommand::$definitions = 0;
-        (new CommandManifestCompiler)->write([ManifestCommand::class], $path);
+        $compiler->write([ManifestCommand::class], $path);
         expect(ManifestCommand::$definitions)->toBe(1);
         ManifestCommand::$definitions = 0;
         $io = new BufferedIO;
         $application = Application::configure()->commandManifest($path)->io($io)->build();
         expect($application->run(['tool', 'manifest:run', 'Ada']))->toBe(0)
             ->and($io->output())->toBe(['[OK] Ada'])
-            ->and(ManifestCommand::$definitions)->toBe(0);
+            ->and(ManifestCommand::$definitions)->toBe(0)
+            ->and(glob(dirname($path).DIRECTORY_SEPARATOR.pathinfo($path, PATHINFO_FILENAME).'-*.php'))
+            ->toHaveCount(1)
+            ->and(is_dir($path.'.d'))->toBeFalse();
     } finally {
-        if (is_file($path)) {
-            unlink($path);
-        }
-        if (is_dir($path.'.d')) {
-            foreach (glob($path.'.d'.DIRECTORY_SEPARATOR.'*.php') ?: [] as $entry) {
-                unlink($entry);
-            }
-            rmdir($path.'.d');
-        }
+        removeCommandManifestFixture($path);
     }
 });
 
 it('preserves authoritative command map names in compiled manifests', function (): void {
     $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-mapped-manifest-'.bin2hex(random_bytes(6)).'.php';
+    $compiler = new CommandManifestCompiler;
     try {
-        (new CommandManifestCompiler)->write(['manifest:mapped' => ManifestCommand::class], $path);
+        $compiler->write(['manifest:mapped' => ManifestCommand::class], $path);
         $io = new BufferedIO;
         $application = Application::configure()->commandManifest($path)->io($io)->build();
 
         expect($application->run(['tool', 'manifest:mapped', 'Ada']))->toBe(ExitCode::SUCCESS)
             ->and($io->output())->toBe(['[OK] Ada']);
     } finally {
-        if (is_file($path)) {
-            unlink($path);
+        removeCommandManifestFixture($path);
+    }
+});
+
+it('rebuilds and clears direct command shards without touching sibling files', function (): void {
+    $directory = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-manifest-cache-'.bin2hex(random_bytes(6));
+    $path = $directory.DIRECTORY_SEPARATOR.'commands.php';
+    $sentinel = $directory.DIRECTORY_SEPARATOR.'.gitignore';
+    $compiler = new CommandManifestCompiler;
+    mkdir($directory, 0775, true);
+    file_put_contents($sentinel, "*\n!.gitignore\n");
+
+    try {
+        $compiler->write([ManifestCommand::class], $path);
+        expect($path)->toBeFile()
+            ->and(glob($directory.DIRECTORY_SEPARATOR.'commands-*.php'))->toHaveCount(1)
+            ->and(is_dir($path.'.d'))->toBeFalse()
+            ->and($sentinel)->toBeFile();
+
+        $compiler->write([], $path);
+        expect($path)->toBeFile()
+            ->and(glob($directory.DIRECTORY_SEPARATOR.'commands-*.php') ?: [])->toBe([])
+            ->and($sentinel)->toBeFile();
+    } finally {
+        removeCommandManifestFixture($path);
+        if (is_file($sentinel)) {
+            unlink($sentinel);
         }
-        if (is_dir($path.'.d')) {
-            foreach (glob($path.'.d'.DIRECTORY_SEPARATOR.'*.php') ?: [] as $entry) {
-                unlink($entry);
-            }
-            rmdir($path.'.d');
+        if (is_dir($directory)) {
+            rmdir($directory);
         }
     }
 });
+
+function removeCommandManifestFixture(string $path): void
+{
+    if (is_file($path)) {
+        unlink($path);
+    }
+    $prefix = pathinfo(basename($path), PATHINFO_FILENAME).'-';
+    foreach (glob(dirname($path).DIRECTORY_SEPARATOR.$prefix.'*.php') ?: [] as $entry) {
+        unlink($entry);
+    }
+}
 
 it('activates declared infrastructure only for selected commands and authorizes OTP commands', function (): void {
     $io = new BufferedIO(['123456']);

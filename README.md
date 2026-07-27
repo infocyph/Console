@@ -69,6 +69,10 @@ $application = Application::configure()
     ->build();
 ```
 
+The compiler keeps `commands.php` as a small index and writes lazy descriptor
+shards beside it as `commands-<hash>.php`. Command dispatch loads only the
+selected descriptor; no secondary `commands.php.d` directory is created.
+
 `completion bash`, `completion zsh`, and `completion fish` emit installable
 shell definitions. Unexpected failures remain concise by default; `-v`, `-vv`,
 and `-vvv` add exception location and trace detail. Run `composer benchmark --

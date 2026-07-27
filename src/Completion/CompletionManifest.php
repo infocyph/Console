@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Console\Completion;
 
+use Infocyph\Console\Support\ManifestValue;
+
 /** @internal */
 final readonly class CompletionManifest
 {
@@ -22,12 +24,23 @@ final readonly class CompletionManifest
             throw new \InvalidArgumentException(sprintf('Completion manifest "%s" does not exist.', $path));
         }
 
-        $manifest = require $path;
-        if (!is_array($manifest)) {
-            throw new \UnexpectedValueException('Completion manifest must return an array.');
+        $manifest = ManifestValue::map(require $path, 'completion');
+        $commands = [];
+        foreach ($manifest as $name => $value) {
+            $command = ManifestValue::map($value, 'completion.' . $name);
+            $commands[$name] = [
+                'aliases' => ManifestValue::stringList(
+                    $command['aliases'] ?? [],
+                    'completion.' . $name . '.aliases',
+                ),
+                'options' => ManifestValue::stringList(
+                    $command['options'] ?? [],
+                    'completion.' . $name . '.options',
+                ),
+            ];
         }
 
-        return new self($manifest);
+        return new self($commands);
     }
 
     /** @return array<string,array{aliases:list<string>,options:list<string>}> */

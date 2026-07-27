@@ -26,10 +26,15 @@ final readonly class Configuration
     /** @return array<array-key, mixed> */
     public function all(): array
     {
-        return $this->config->get() ?? [];
+        $configuration = $this->config->get();
+
+        return is_array($configuration) ? $configuration : [];
     }
 
-    /** @return array<array-key, mixed>|null */
+    /**
+     * @param array<array-key, mixed>|null $default
+     * @return array<array-key, mixed>|null
+     */
     public function array(string $key, ?array $default = null): ?array
     {
         return $this->config->getArray($key, $default);
@@ -40,7 +45,8 @@ final readonly class Configuration
         return $this->config->getBool($key, $default);
     }
 
-    public function get(string|array|null $key = null, mixed $default = null): mixed
+    /** @param array<int, int|string>|int|string|null $key */
+    public function get(int|string|array|null $key = null, mixed $default = null): mixed
     {
         return $this->config->get($key, $default);
     }

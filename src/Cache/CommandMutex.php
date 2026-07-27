@@ -10,6 +10,11 @@ final readonly class CommandMutex
 {
     public function __construct(private LockProviderInterface $locks, private string $prefix = 'console:mutex:') {}
 
+    /**
+     * @template T
+     * @param callable(): T $operation
+     * @return T
+     */
     public function synchronized(string $name, callable $operation, float $waitSeconds = 0.0): mixed
     {
         $handle = $this->locks->acquire($this->prefix . $name, $waitSeconds);

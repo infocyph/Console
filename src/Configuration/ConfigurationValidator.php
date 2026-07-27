@@ -10,7 +10,10 @@ use Infocyph\ReqShield\Validator;
 
 final class ConfigurationValidator
 {
-    /** @param array<string, mixed> $rules @param array<string, mixed> $sanitizers */
+    /**
+     * @param array<string, mixed> $rules
+     * @param array<string, array<int, (callable(): mixed)|string>|(callable(): mixed)|string> $sanitizers
+     */
     public function validate(Configuration $configuration, array $rules, array $sanitizers = [], bool $strict = false): Configuration
     {
         if ($rules === []) {
@@ -30,7 +33,14 @@ final class ConfigurationValidator
         }
         $result = $validator->validate($configuration->all());
         if ($result->fails()) {
-            $failures = array_map(static fn(array $failure): ValidationFailure => new ValidationFailure($failure['field'], $failure['rule'], $failure['message']), $result->toFlatErrors());
+            $failures = [];
+            foreach ($result->toFlatErrors() as $failure) {
+                $failures[] = new ValidationFailure(
+                    $failure['field'],
+                    $failure['rule'],
+                    $failure['message'],
+                );
+            }
 
             throw new ValidationFailedException($failures);
         }

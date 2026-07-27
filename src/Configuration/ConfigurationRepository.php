@@ -13,8 +13,22 @@ final class ConfigurationRepository implements ConfigurationProvider
 
     private ?string $profile = null;
 
-    /** @param list<array<array-key,mixed>> $layers @param list<string> $files @param array<string,mixed> $rules @param array<string,mixed> $sanitizers @param array<string,array<array-key,mixed>> $profiles */
-    public function __construct(private readonly ConfigurationLoader $loader, private readonly array $layers, private readonly array $files, private readonly array $rules = [], private readonly array $sanitizers = [], private readonly bool $strict = false, private readonly array $profiles = []) {}
+    /**
+     * @param list<array<array-key, mixed>> $layers
+     * @param list<string> $files
+     * @param array<string, mixed> $rules
+     * @param array<string, array<int, (callable(): mixed)|string>|(callable(): mixed)|string> $sanitizers
+     * @param array<string, array<array-key, mixed>> $profiles
+     */
+    public function __construct(
+        private readonly ConfigurationLoader $loader,
+        private readonly array $layers,
+        private readonly array $files,
+        private readonly array $rules = [],
+        private readonly array $sanitizers = [],
+        private readonly bool $strict = false,
+        private readonly array $profiles = [],
+    ) {}
 
     public function configuration(): Configuration
     {

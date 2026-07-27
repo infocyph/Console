@@ -65,7 +65,10 @@ interface IO
 
     public function success(string $message): void;
 
-    /** @param list<string> $headers @param list<array<array-key, scalar|null>> $rows */
+    /**
+     * @param list<string> $headers
+     * @param list<array<array-key, scalar|null>> $rows
+     */
     public function table(array $headers, array $rows): void;
 
     public function task(string $label, string $status = 'pending'): Task;

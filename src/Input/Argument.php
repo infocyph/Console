@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Console\Input;
 
+use Infocyph\Console\Support\ManifestValue;
+
 final readonly class Argument
 {
     /**
@@ -40,7 +42,21 @@ final readonly class Argument
     /** @param array<string,mixed> $data */
     public static function fromManifest(array $data): self
     {
-        return new self((string) $data['name'], (bool) $data['required'], (bool) ($data['variadic'] ?? false), ValueType::from((string) ($data['type'] ?? 'string')), $data['default'] ?? null, isset($data['environment']) ? (string) $data['environment'] : null, isset($data['environment_delimiter']) ? (string) $data['environment_delimiter'] : null, (string) ($data['description'] ?? ''), $data['sanitizers'] ?? [], $data['rules'] ?? []);
+        return new self(
+            ManifestValue::string($data['name'] ?? null, 'argument.name'),
+            ManifestValue::bool($data['required'] ?? null, 'argument.required'),
+            ManifestValue::bool($data['variadic'] ?? null, 'argument.variadic'),
+            ValueType::from(ManifestValue::string($data['type'] ?? null, 'argument.type', 'string')),
+            $data['default'] ?? null,
+            ManifestValue::nullableString($data['environment'] ?? null, 'argument.environment'),
+            ManifestValue::nullableString(
+                $data['environment_delimiter'] ?? null,
+                'argument.environment_delimiter',
+            ),
+            ManifestValue::string($data['description'] ?? null, 'argument.description', ''),
+            ManifestValue::stringList($data['sanitizers'] ?? [], 'argument.sanitizers'),
+            ManifestValue::stringList($data['rules'] ?? [], 'argument.rules'),
+        );
     }
 
     public static function optional(string $name, mixed $default = null): self

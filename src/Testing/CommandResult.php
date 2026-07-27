@@ -8,7 +8,10 @@ use Infocyph\Console\Command\ExitCode;
 
 final readonly class CommandResult
 {
-    /** @param list<string> $output @param list<string> $errors */
+    /**
+     * @param list<string> $output
+     * @param list<string> $errors
+     */
     public function __construct(private int $exitCode, private array $output, private array $errors) {}
 
     public function assertAsked(string $question): self
@@ -87,12 +90,23 @@ final readonly class CommandResult
         return $this->assertExitCode(ExitCode::SUCCESS);
     }
 
-    /** @param list<string> $headers @param list<array<array-key, scalar|null>> $rows */
+    /**
+     * @param list<string> $headers
+     * @param list<array<array-key, scalar|null>> $rows
+     */
     public function assertTable(array $headers, array $rows): self
     {
-        foreach ([...$headers, ...array_merge([], ...$rows)] as $value) {
-            if (!str_contains($this->outputText(), (string) $value)) {
-                $this->fail(sprintf('Expected table content "%s".', (string) $value));
+        foreach ($headers as $header) {
+            if (!str_contains($this->outputText(), $header)) {
+                $this->fail(sprintf('Expected table content "%s".', $header));
+            }
+        }
+        foreach ($rows as $row) {
+            foreach ($row as $value) {
+                $text = (string) $value;
+                if (!str_contains($this->outputText(), $text)) {
+                    $this->fail(sprintf('Expected table content "%s".', $text));
+                }
             }
         }
 

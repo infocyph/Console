@@ -6,6 +6,7 @@ namespace Infocyph\Console\Command;
 
 use Infocyph\Console\Input\Argument;
 use Infocyph\Console\Input\Option;
+use Infocyph\Console\Support\ManifestValue;
 
 /**
  * @internal
@@ -49,15 +50,42 @@ final readonly class CommandDescriptor
     /** @param array<string,mixed> $manifest */
     public static function fromManifest(array $manifest): self
     {
-        $class = $manifest['class'] ?? null;
-        if (!is_string($class) || $class === '') {
-            throw new \UnexpectedValueException('A command manifest entry requires a class.');
+        $class = ManifestValue::string($manifest['class'] ?? null, 'command.class');
+        if ($class === '' || !is_a($class, CommandContract::class, true)) {
+            throw new \UnexpectedValueException(sprintf(
+                'Command manifest class "%s" must implement %s.',
+                $class,
+                CommandContract::class,
+            ));
         }
-        $arguments = array_map(Argument::fromManifest(...), $manifest['arguments'] ?? []);
-        $options = array_map(Option::fromManifest(...), $manifest['options'] ?? []);
-        $capabilities = array_values(array_filter(array_map(Capability::tryFrom(...), $manifest['capabilities'] ?? [])));
 
-        return new self($class, (string) $manifest['name'], (string) ($manifest['description'] ?? ''), $arguments, $options, $manifest['aliases'] ?? [], (bool) ($manifest['hidden'] ?? false), $capabilities, (bool) ($manifest['requires_otp'] ?? false));
+        $arguments = [];
+        foreach (ManifestValue::mapList($manifest['arguments'] ?? [], 'command.arguments') as $argument) {
+            $arguments[] = Argument::fromManifest($argument);
+        }
+        $options = [];
+        foreach (ManifestValue::mapList($manifest['options'] ?? [], 'command.options') as $option) {
+            $options[] = Option::fromManifest($option);
+        }
+        $capabilities = [];
+        foreach (ManifestValue::stringList($manifest['capabilities'] ?? [], 'command.capabilities') as $value) {
+            $capability = Capability::tryFrom($value);
+            if ($capability !== null) {
+                $capabilities[] = $capability;
+            }
+        }
+
+        return new self(
+            $class,
+            ManifestValue::string($manifest['name'] ?? null, 'command.name'),
+            ManifestValue::string($manifest['description'] ?? null, 'command.description', ''),
+            $arguments,
+            $options,
+            ManifestValue::stringList($manifest['aliases'] ?? [], 'command.aliases'),
+            ManifestValue::bool($manifest['hidden'] ?? null, 'command.hidden'),
+            $capabilities,
+            ManifestValue::bool($manifest['requires_otp'] ?? null, 'command.requires_otp'),
+        );
     }
 
     /** @return list<string> */

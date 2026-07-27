@@ -41,7 +41,16 @@ final class PromptManager
         };
     }
 
-    /** @param array<string, array{type?: string, label?: string, default?: mixed, required?: bool, options?: array<string, string>}> $fields @return array<string, mixed> */
+    /**
+     * @param array<string, array{
+     *     type?: string,
+     *     label?: string,
+     *     default?: mixed,
+     *     required?: bool,
+     *     options?: array<string, string>
+     * }> $fields
+     * @return array<string, mixed>
+     */
     public function form(array $fields): array
     {
         $values = [];
@@ -53,7 +62,7 @@ final class PromptManager
                 'number' => $this->number($label, is_int($default) || is_float($default) ? $default : null),
                 'confirm' => $this->confirm($label, (bool) $default),
                 'select' => $this->select($label, $field['options'] ?? [], is_string($default) ? $default : null),
-                'multi_select' => $this->multiSelect($label, $field['options'] ?? [], is_array($default) ? $default : []),
+                'multi_select' => $this->multiSelect($label, $field['options'] ?? [], $this->selectionDefaults($default)),
                 'password' => $this->password($label, (bool) ($field['required'] ?? true)),
                 default => $this->text($label, is_string($default) ? $default : null, (bool) ($field['required'] ?? false)),
             };
@@ -67,7 +76,10 @@ final class PromptManager
         $this->interactive = $interactive;
     }
 
-    /** @param array<string,string> $options @return array<string,string> */
+    /**
+     * @param array<string, string> $options
+     * @return array<string, string>
+     */
     public function matchingOptions(array $options, string $query, int $visibleLimit = 10): array
     {
         $query = strtolower($query);
@@ -76,7 +88,11 @@ final class PromptManager
         return array_slice($matches, 0, max(1, $visibleLimit), true);
     }
 
-    /** @param array<string, string> $options @return list<string> */
+    /**
+     * @param array<string, string> $options
+     * @param list<string> $default
+     * @return list<string>
+     */
     public function multiSelect(string $label, array $options, array $default = []): array
     {
         $this->writeOptions($options);
@@ -158,7 +174,7 @@ final class PromptManager
                 if ($value === null) {
                     throw new PromptCancelled('Input was cancelled.');
                 }
-                $value = (string) $value;
+                $value = $this->stringAnswer($value);
                 if (in_array($value, ["\033[A", 'up'], true)) {
                     $viewport->move(-1);
 
@@ -185,53 +201,75 @@ final class PromptManager
         }
     }
 
-    /** @param list<string> $sanitize */
+    /**
+     * @param list<string> $sanitize
+     * @param list<string> $rules
+     */
     public function text(string $label, ?string $default = null, bool $required = false, ?callable $validate = null, array $sanitize = [], array $rules = [], ?string $placeholder = null, ?string $hint = null): string
     {
         return $this->ask($label, $default, $required, $validate, $sanitize, false, $rules, $placeholder, $hint);
     }
 
-    /** @param list<string> $sanitize */
+    /**
+     * @param list<string> $sanitize
+     * @param list<string> $rules
+     */
     public function textArea(string $label, ?string $default = null, bool $required = false, ?callable $validate = null, array $sanitize = [], array $rules = [], ?string $placeholder = null, ?string $hint = null): string
     {
         return $this->ask($label, $default, $required, $validate, $sanitize, false, $rules, $placeholder, $hint);
     }
 
-    /** @param list<string> $sanitize */
+    /**
+     * @param list<string> $sanitize
+     * @param list<string> $rules
+     */
     private function ask(string $label, ?string $default, bool $required, ?callable $validate = null, array $sanitize = [], bool $secret = false, array $rules = [], ?string $placeholder = null, ?string $hint = null): string
     {
         if (!$this->interactive) {
-            if ($default === null) {
-                throw new UsageException(sprintf('%s requires input, but interaction is disabled.', $label));
-            }
-
-            return $this->semanticValidate($this->sanitize($default, $sanitize), $rules, $sanitize);
+            return $this->nonInteractiveAnswer($label, $default, $rules, $sanitize);
         }
-        do {
+
+        while (true) {
             if ($hint !== null && $hint !== '') {
                 ($this->write)($hint);
             }
-            $suffix = $default === null ? ($placeholder === null ? ':' : ' (' . $placeholder . '):') : ' [' . $default . ']:';
-            ($this->write)($label . $suffix);
+            ($this->write)($label . $this->promptSuffix($default, $placeholder));
             $raw = $this->input->read($secret);
             if ($raw === null) {
                 throw new PromptCancelled('Input was cancelled.');
             }
-            $value = $this->sanitize((string) $raw === '' && $default !== null ? $default : (string) $raw, $sanitize);
-            $error = $required && $value === '' ? 'A value is required.' : ($validate !== null ? $validate($value) : null);
-            if (!is_string($error) || $error === '') {
-                try {
-                    $value = $this->semanticValidate($value, $rules, $sanitize);
-                } catch (UsageException $exception) {
-                    $error = $exception->getMessage();
-                }
-            }
-            if (is_string($error) && $error !== '') {
-                ($this->write)('[ERROR] ' . $error);
-            }
-        } while (is_string($error) && $error !== '');
 
-        return $value;
+            $answer = $this->stringAnswer($raw);
+            $value = $this->sanitize($answer === '' && $default !== null ? $default : $answer, $sanitize);
+            [$value, $error] = $this->validateAnswer($value, $required, $validate, $rules, $sanitize);
+            if ($error === null) {
+                return $value;
+            }
+
+            ($this->write)('[ERROR] ' . $error);
+        }
+    }
+
+    /**
+     * @param list<string> $rules
+     * @param list<string> $sanitize
+     */
+    private function nonInteractiveAnswer(string $label, ?string $default, array $rules, array $sanitize): string
+    {
+        if ($default === null) {
+            throw new UsageException(sprintf('%s requires input, but interaction is disabled.', $label));
+        }
+
+        return $this->semanticValidate($this->sanitize($default, $sanitize), $rules, $sanitize);
+    }
+
+    private function promptSuffix(?string $default, ?string $placeholder): string
+    {
+        if ($default !== null) {
+            return ' [' . $default . ']:';
+        }
+
+        return $placeholder === null ? ':' : ' (' . $placeholder . '):';
     }
 
     /** @param list<string> $sanitize */
@@ -246,10 +284,66 @@ final class PromptManager
         return $value;
     }
 
-    /** @param list<string> $rules @param list<string> $sanitize */
+    /** @return list<string> */
+    private function selectionDefaults(mixed $value): array
+    {
+        if ($value === null) {
+            return [];
+        }
+        if (!is_array($value)) {
+            throw new \InvalidArgumentException('Multi-select defaults must be an array of strings.');
+        }
+
+        $defaults = [];
+        foreach ($value as $default) {
+            if (!is_string($default)) {
+                throw new \InvalidArgumentException('Multi-select defaults must contain only strings.');
+            }
+            $defaults[] = $default;
+        }
+
+        return $defaults;
+    }
+
+    /**
+     * @param list<string> $rules
+     * @param list<string> $sanitize
+     */
     private function semanticValidate(string $value, array $rules, array $sanitize): string
     {
         return $rules === [] ? $value : new PromptValidator()->validate($value, $rules, $sanitize);
+    }
+
+    private function stringAnswer(mixed $value): string
+    {
+        if (!is_scalar($value) && !$value instanceof \Stringable) {
+            throw new UsageException('Prompt input must be scalar or stringable.');
+        }
+
+        return (string) $value;
+    }
+
+    /**
+     * @param list<string> $rules
+     * @param list<string> $sanitize
+     * @return array{string, string|null}
+     */
+    private function validateAnswer(string $value, bool $required, ?callable $validate, array $rules, array $sanitize): array
+    {
+        if ($required && $value === '') {
+            return [$value, 'A value is required.'];
+        }
+
+        $error = $validate === null ? null : $validate($value);
+        if (is_string($error) && $error !== '') {
+            return [$value, $error];
+        }
+
+        try {
+            return [$this->semanticValidate($value, $rules, $sanitize), null];
+        } catch (UsageException $exception) {
+            return [$value, $exception->getMessage()];
+        }
     }
 
     /** @param array<string, string> $options */

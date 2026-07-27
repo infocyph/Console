@@ -37,6 +37,7 @@ final class PendingCommand
         return $this;
     }
 
+    /** @param scalar|list<scalar>|null $value */
     public function option(string $name, string|int|float|bool|array|null $value = true): self
     {
         $this->options[] = ['name' => $name, 'value' => $value];

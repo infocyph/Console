@@ -9,7 +9,10 @@ use Infocyph\Console\Command\CommandDescriptor;
 /** @internal */
 final class ValidationManifestCompiler
 {
-    /** @param list<CommandDescriptor> $commands @return array<string,array<string,array{rules:list<string>,sanitizers:list<string>}>> */
+    /**
+     * @param list<CommandDescriptor> $commands
+     * @return array<string, array<string, array{rules: list<string>, sanitizers: list<string>}>>
+     */
     public function compile(array $commands): array
     {
         $manifest = [];

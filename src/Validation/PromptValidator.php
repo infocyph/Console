@@ -10,7 +10,10 @@ use Infocyph\ReqShield\Validator;
 /** @internal */
 final class PromptValidator
 {
-    /** @param list<string> $rules @param list<string> $sanitizers */
+    /**
+     * @param list<string> $rules
+     * @param list<string> $sanitizers
+     */
     public function validate(string $value, array $rules, array $sanitizers = []): string
     {
         if ($rules === []) {
@@ -25,6 +28,11 @@ final class PromptValidator
             throw new UsageException($result->firstError('value') ?? 'Invalid input.');
         }
 
-        return (string) ($result->typed()['value'] ?? $value);
+        $validated = $result->typed()['value'] ?? $value;
+        if (!is_scalar($validated) && !$validated instanceof \Stringable) {
+            throw new UsageException('Validated prompt input must be scalar or stringable.');
+        }
+
+        return (string) $validated;
     }
 }

@@ -9,12 +9,19 @@ use Infocyph\Console\Command\CommandDescriptor;
 /** @internal */
 final class CompletionManifestCompiler
 {
-    /** @param list<CommandDescriptor> $commands @return array<string,array{aliases:list<string>,options:list<string>}> */
+    /**
+     * @param list<CommandDescriptor> $commands
+     * @return array<string, array{aliases: list<string>, options: list<string>}>
+     */
     public function compile(array $commands): array
     {
         $result = [];
         foreach ($commands as $command) {
-            $result[$command->name()] = ['aliases' => $command->aliases(), 'options' => array_map(static fn($option): string => '--' . $option->name(), $command->options())];
+            $options = [];
+            foreach ($command->options() as $option) {
+                $options[] = '--' . $option->name();
+            }
+            $result[$command->name()] = ['aliases' => $command->aliases(), 'options' => $options];
         }
         ksort($result);
 
@@ -27,7 +34,7 @@ final class CompletionManifestCompiler
         $this->writeManifest($this->compile($commands), $path);
     }
 
-    /** @param array<string,array{aliases:list<string>,options:list<string>}> $manifest */
+    /** @param array<string, array{aliases: list<string>, options: list<string>}> $manifest */
     private function writeManifest(array $manifest, string $path): void
     {
         $directory = dirname($path);

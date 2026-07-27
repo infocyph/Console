@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Console\Input;
 
+use Infocyph\Console\Support\ManifestValue;
+
 final readonly class Option
 {
     /**
@@ -49,7 +51,19 @@ final readonly class Option
     /** @param array<string,mixed> $data */
     public static function fromManifest(array $data): self
     {
-        return new self((string) $data['name'], (bool) $data['accepts_value'], (bool) ($data['multiple'] ?? false), (bool) ($data['negatable'] ?? false), isset($data['shortcut']) ? (string) $data['shortcut'] : null, ValueType::from((string) ($data['type'] ?? 'string')), $data['default'] ?? null, isset($data['environment']) ? (string) $data['environment'] : null, (string) ($data['description'] ?? ''), $data['sanitizers'] ?? [], $data['rules'] ?? []);
+        return new self(
+            ManifestValue::string($data['name'] ?? null, 'option.name'),
+            ManifestValue::bool($data['accepts_value'] ?? null, 'option.accepts_value'),
+            ManifestValue::bool($data['multiple'] ?? null, 'option.multiple'),
+            ManifestValue::bool($data['negatable'] ?? null, 'option.negatable'),
+            ManifestValue::nullableString($data['shortcut'] ?? null, 'option.shortcut'),
+            ValueType::from(ManifestValue::string($data['type'] ?? null, 'option.type', 'string')),
+            $data['default'] ?? null,
+            ManifestValue::nullableString($data['environment'] ?? null, 'option.environment'),
+            ManifestValue::string($data['description'] ?? null, 'option.description', ''),
+            ManifestValue::stringList($data['sanitizers'] ?? [], 'option.sanitizers'),
+            ManifestValue::stringList($data['rules'] ?? [], 'option.rules'),
+        );
     }
 
     public static function multiple(string $name): self

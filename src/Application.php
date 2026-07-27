@@ -40,74 +40,14 @@ final readonly class Application
     public function run(?array $argv = null): int
     {
         $io = $this->io;
+        $verbosity = 0;
 
         try {
-            [$global, $commandName, $commandTokens] = $this->splitGlobalOptions($argv ?? $_SERVER['argv'] ?? []);
-            $io = $global['quiet'] ? new QuietIO($this->io) : $this->io;
-            $io->setInteractive(!$global['noInteraction']);
-            if (!in_array($global['format'], ['text', 'json'], true)) {
-                throw new UsageException('Output format must be text or json.');
-            }
-            $io->setFormat($global['format']);
-            $io->setAnsi($global['ansi']);
-            $io->setWidth($global['width']);
+            [$global, $commandName, $commandTokens] = $this->splitGlobalOptions($argv ?? $this->serverArguments());
+            $verbosity = $global['verbosity'];
+            $io = $this->configureIO($global);
 
-            if ($global['version']) {
-                $io->text($this->metadata->name() . ' ' . $this->metadata->version());
-
-                return ExitCode::SUCCESS;
-            }
-
-            if ($commandName === null) {
-                $this->renderApplicationHelp($io);
-
-                return ExitCode::SUCCESS;
-            }
-
-            if ($commandName === 'list') {
-                $this->renderCommandList($io);
-
-                return ExitCode::SUCCESS;
-            }
-
-            if ($commandName === 'completion') {
-                return $this->renderCompletion($commandTokens[0] ?? 'bash', $io);
-            }
-
-            if ($commandName === 'help') {
-                $requested = $commandTokens[0] ?? null;
-                if ($requested === null) {
-                    $this->renderApplicationHelp($io);
-
-                    return ExitCode::SUCCESS;
-                }
-
-                $descriptor = $this->registry->find($requested);
-                if ($descriptor === null) {
-                    return $this->commandNotFound($requested, $io);
-                }
-
-                $this->renderCommandHelp($descriptor, $io);
-
-                return ExitCode::SUCCESS;
-            }
-
-            $descriptor = $this->registry->find($commandName);
-            if ($descriptor === null) {
-                return $this->commandNotFound($commandName, $io);
-            }
-
-            if ($global['help']) {
-                $this->renderCommandHelp($descriptor, $io);
-
-                return ExitCode::SUCCESS;
-            }
-
-            $commands = $this->commands->get();
-            $commands->useProfile($global['profile']);
-            $input = new ArgvParser()->parse($descriptor, $commandTokens);
-
-            return $commands->run($descriptor, $input, $io);
+            return $this->dispatch($global, $commandName, $commandTokens, $io);
         } catch (ValidationFailedException $exception) {
             $io->validationFailures(array_map(static fn($failure): array => $failure->toArray(), $exception->failures()));
 
@@ -125,7 +65,7 @@ final readonly class Application
 
             return $exception->exitCode();
         } catch (\Throwable $exception) {
-            $this->renderUnexpectedError($exception, $io, $global['verbosity'] ?? 0);
+            $this->renderUnexpectedError($exception, $io, $verbosity);
 
             return $exception instanceof ProvidesExitCode ? $exception->exitCode() : ExitCode::FAILURE;
         }
@@ -147,6 +87,216 @@ final readonly class Application
         return ExitCode::COMMAND_NOT_FOUND;
     }
 
+    private function commandUsage(CommandDescriptor $command): string
+    {
+        $usage = $this->metadata->name() . ' ' . $command->name();
+        foreach ($command->arguments() as $argument) {
+            $name = $argument->isVariadic() ? $argument->name() . '...' : $argument->name();
+            $usage .= $argument->isRequired() ? ' <' . $name . '>' : ' [' . $name . ']';
+        }
+
+        return $usage . ' [options]';
+    }
+
+    /**
+     * @param array{
+     *     help: bool,
+     *     version: bool,
+     *     quiet: bool,
+     *     noInteraction: bool,
+     *     format: string,
+     *     ansi: ?bool,
+     *     width: ?int,
+     *     verbosity: int,
+     *     profile: ?string
+     * } $global
+     */
+    private function configureIO(array $global): IO
+    {
+        $io = $global['quiet'] ? new QuietIO($this->io) : $this->io;
+        $io->setInteractive(!$global['noInteraction']);
+        if (!in_array($global['format'], ['text', 'json'], true)) {
+            throw new UsageException('Output format must be text or json.');
+        }
+        $io->setFormat($global['format']);
+        $io->setAnsi($global['ansi']);
+        $io->setWidth($global['width']);
+
+        if ($global['version']) {
+            $io->text($this->metadata->name() . ' ' . $this->metadata->version());
+        }
+
+        return $io;
+    }
+
+    /**
+     * @param list<string> $tokens
+     * @param array{
+     *     help: bool,
+     *     version: bool,
+     *     quiet: bool,
+     *     noInteraction: bool,
+     *     format: string,
+     *     ansi: ?bool,
+     *     width: ?int,
+     *     verbosity: int,
+     *     profile: ?string
+     * } $global
+     * @param-out array{
+     *     help: bool,
+     *     version: bool,
+     *     quiet: bool,
+     *     noInteraction: bool,
+     *     format: string,
+     *     ansi: ?bool,
+     *     width: ?int,
+     *     verbosity: int,
+     *     profile: ?string
+     * } $global
+     */
+    private function consumeGlobalOption(string $token, array $tokens, int &$index, array &$global): bool
+    {
+        $flagged = $this->globalFlag($token, $global);
+        if ($flagged || $this->globalVerbosity($token, $global)) {
+            return true;
+        }
+
+        $inline = $this->inlineGlobalValue($token);
+        if ($inline !== null) {
+            $this->setGlobalValue($inline[0], $inline[1], $global);
+
+            return true;
+        }
+
+        if (!in_array($token, ['--format', '--width', '--profile'], true)) {
+            return false;
+        }
+
+        $index++;
+        if (!array_key_exists($index, $tokens)) {
+            throw new UsageException(sprintf('Option "%s" requires a value.', $token));
+        }
+        $this->setGlobalValue($token, $tokens[$index], $global);
+
+        return true;
+    }
+
+    /**
+     * @param array{
+     *     help: bool,
+     *     version: bool,
+     *     quiet: bool,
+     *     noInteraction: bool,
+     *     format: string,
+     *     ansi: ?bool,
+     *     width: ?int,
+     *     verbosity: int,
+     *     profile: ?string
+     * } $global
+     * @param list<string> $commandTokens
+     */
+    private function dispatch(array $global, ?string $commandName, array $commandTokens, IO $io): int
+    {
+        if ($global['version']) {
+            return ExitCode::SUCCESS;
+        }
+
+        if ($commandName === null) {
+            $this->renderApplicationHelp($io);
+
+            return ExitCode::SUCCESS;
+        }
+
+        $builtInResult = $this->dispatchBuiltIn($commandName, $commandTokens, $io);
+        if ($builtInResult !== null) {
+            return $builtInResult;
+        }
+
+        $descriptor = $this->registry->find($commandName);
+        if ($descriptor === null) {
+            return $this->commandNotFound($commandName, $io);
+        }
+
+        if ($global['help']) {
+            $this->renderCommandHelp($descriptor, $io);
+
+            return ExitCode::SUCCESS;
+        }
+
+        $commands = $this->commands->get();
+        $commands->useProfile($global['profile']);
+        $input = new ArgvParser()->parse($descriptor, $commandTokens);
+
+        return $commands->run($descriptor, $input, $io);
+    }
+
+    /** @param list<string> $commandTokens */
+    private function dispatchBuiltIn(string $commandName, array $commandTokens, IO $io): ?int
+    {
+        if ($commandName === 'list') {
+            $this->renderCommandList($io);
+
+            return ExitCode::SUCCESS;
+        }
+
+        if ($commandName === 'completion') {
+            return $this->renderCompletion($commandTokens[0] ?? 'bash', $io);
+        }
+
+        return $commandName === 'help' ? $this->renderRequestedHelp($commandTokens[0] ?? null, $io) : null;
+    }
+
+    /**
+     * @param array{help: bool, version: bool, quiet: bool, noInteraction: bool, format: string, ansi: ?bool, width: ?int, verbosity: int, profile: ?string} $global
+     * @param-out array{help: bool, version: bool, quiet: bool, noInteraction: bool, format: string, ansi: ?bool, width: ?int, verbosity: int, profile: ?string} $global
+     */
+    private function globalFlag(string $token, array &$global): bool
+    {
+        $updated = match ($token) {
+            '--help', '-h' => [...$global, 'help' => true],
+            '--version', '-V' => [...$global, 'version' => true],
+            '--quiet', '-q' => [...$global, 'quiet' => true],
+            '--no-interaction', '-n' => [...$global, 'noInteraction' => true],
+            '--ansi' => [...$global, 'ansi' => true],
+            '--no-ansi', '--no-color' => [...$global, 'ansi' => false],
+            default => null,
+        };
+        if ($updated === null) {
+            return false;
+        }
+
+        $global = $updated;
+
+        return true;
+    }
+
+    /**
+     * @param array{help: bool, version: bool, quiet: bool, noInteraction: bool, format: string, ansi: ?bool, width: ?int, verbosity: int, profile: ?string} $global
+     * @param-out array{help: bool, version: bool, quiet: bool, noInteraction: bool, format: string, ansi: ?bool, width: ?int, verbosity: int, profile: ?string} $global
+     */
+    private function globalVerbosity(string $token, array &$global): bool
+    {
+        if (preg_match('/^-v+$/', $token) !== 1) {
+            return false;
+        }
+
+        $global['verbosity'] += strlen($token) - 1;
+
+        return true;
+    }
+
+    /** @return array{string, string}|null */
+    private function inlineGlobalValue(string $token): ?array
+    {
+        foreach (['--format=' => '--format', '--width=' => '--width', '--profile=' => '--profile'] as $prefix => $option) {
+            if (str_starts_with($token, $prefix)) {
+                return [$option, substr($token, strlen($prefix))];
+            }
+        }
+
+        return null;
+    }
+
     private function renderApplicationHelp(IO $io): void
     {
         $io->text(sprintf('Usage: %s <command> [options]', $this->metadata->name()));
@@ -162,43 +312,29 @@ final readonly class Application
         $io->text('  completion [shell]    Generate bash, zsh, or fish completion');
     }
 
+    private function renderArgumentHelp(CommandDescriptor $command, IO $io): void
+    {
+        if ($command->arguments() === []) {
+            return;
+        }
+
+        $io->text('');
+        $io->text('Arguments:');
+        foreach ($command->arguments() as $argument) {
+            $io->text(sprintf('  %-24s %s', $argument->name(), $argument->descriptionText()));
+        }
+    }
+
     private function renderCommandHelp(CommandDescriptor $command, IO $io): void
     {
-        $usage = $this->metadata->name() . ' ' . $command->name();
-        foreach ($command->arguments() as $argument) {
-            $name = $argument->isVariadic() ? $argument->name() . '...' : $argument->name();
-            $usage .= $argument->isRequired() ? ' <' . $name . '>' : ' [' . $name . ']';
-        }
-        $usage .= ' [options]';
-
-        $io->text('Usage: ' . $usage);
+        $io->text('Usage: ' . $this->commandUsage($command));
         if ($command->description() !== '') {
             $io->text('');
             $io->text($command->description());
         }
 
-        if ($command->arguments() !== []) {
-            $io->text('');
-            $io->text('Arguments:');
-            foreach ($command->arguments() as $argument) {
-                $io->text(sprintf('  %-24s %s', $argument->name(), $argument->descriptionText()));
-            }
-        }
-
-        if ($command->options() !== []) {
-            $io->text('');
-            $io->text('Options:');
-            foreach ($command->options() as $option) {
-                $names = '--' . $option->name();
-                if ($option->shortName() !== null) {
-                    $names = '-' . $option->shortName() . ', ' . $names;
-                }
-                if ($option->acceptsValue()) {
-                    $names .= '=VALUE';
-                }
-                $io->text(sprintf('  %-24s %s', $names, $option->descriptionText()));
-            }
-        }
+        $this->renderArgumentHelp($command, $io);
+        $this->renderOptionHelp($command, $io);
     }
 
     private function renderCommandList(IO $io): void
@@ -223,6 +359,40 @@ final readonly class Application
         }
     }
 
+    private function renderOptionHelp(CommandDescriptor $command, IO $io): void
+    {
+        if ($command->options() === []) {
+            return;
+        }
+
+        $io->text('');
+        $io->text('Options:');
+        foreach ($command->options() as $option) {
+            $names = '--' . $option->name();
+            $names = $option->shortName() === null ? $names : '-' . $option->shortName() . ', ' . $names;
+            $names .= $option->acceptsValue() ? '=VALUE' : '';
+            $io->text(sprintf('  %-24s %s', $names, $option->descriptionText()));
+        }
+    }
+
+    private function renderRequestedHelp(?string $requested, IO $io): int
+    {
+        if ($requested === null) {
+            $this->renderApplicationHelp($io);
+
+            return ExitCode::SUCCESS;
+        }
+
+        $descriptor = $this->registry->find($requested);
+        if ($descriptor === null) {
+            return $this->commandNotFound($requested, $io);
+        }
+
+        $this->renderCommandHelp($descriptor, $io);
+
+        return ExitCode::SUCCESS;
+    }
+
     private function renderUnexpectedError(\Throwable $exception, IO $io, int $verbosity): void
     {
         $verbosity = max($verbosity, getenv('CONSOLE_DEBUG') !== false ? 3 : 0);
@@ -243,102 +413,85 @@ final readonly class Application
         }
     }
 
-    /** @param list<string> $argv @return array{array{help: bool, version: bool, quiet: bool, noInteraction: bool, format: string, ansi: ?bool, width: ?int, verbosity: int, profile: ?string}, string|null, list<string>} */
+    /** @return list<string> */
+    private function serverArguments(): array
+    {
+        $arguments = $_SERVER['argv'] ?? [];
+        if (!is_array($arguments)) {
+            throw new UsageException('Server arguments must be an array.');
+        }
+
+        $normalized = [];
+        foreach ($arguments as $argument) {
+            if (!is_string($argument)) {
+                throw new UsageException('Server arguments must contain only strings.');
+            }
+            $normalized[] = $argument;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array{help: bool, version: bool, quiet: bool, noInteraction: bool, format: string, ansi: ?bool, width: ?int, verbosity: int, profile: ?string} $global
+     * @param-out array{help: bool, version: bool, quiet: bool, noInteraction: bool, format: string, ansi: ?bool, width: ?int, verbosity: int, profile: ?string} $global
+     */
+    private function setGlobalValue(string $option, string $value, array &$global): void
+    {
+        if ($option === '--format') {
+            $global['format'] = $value;
+
+            return;
+        }
+
+        if ($option === '--width') {
+            $global['width'] = $this->width($value);
+
+            return;
+        }
+
+        $global['profile'] = $value;
+    }
+
+    /**
+     * @param list<string> $argv
+     * @return array{
+     *     array{
+     *         help: bool,
+     *         version: bool,
+     *         quiet: bool,
+     *         noInteraction: bool,
+     *         format: string,
+     *         ansi: ?bool,
+     *         width: ?int,
+     *         verbosity: int,
+     *         profile: ?string
+     *     },
+     *     string|null,
+     *     list<string>
+     * }
+     */
     private function splitGlobalOptions(array $argv): array
     {
         $tokens = array_slice($argv, 1);
         $global = ['help' => false, 'version' => false, 'quiet' => false, 'noInteraction' => false, 'format' => 'text', 'ansi' => null, 'width' => null, 'verbosity' => 0, 'profile' => null];
         $command = null;
         $commandTokens = [];
-        $endOfOptions = false;
 
         for ($index = 0; $index < count($tokens); $index++) {
             $token = $tokens[$index];
-            if ($endOfOptions) {
-                if ($command === null) {
-                    $command = $token;
-                } else {
-                    $commandTokens[] = $token;
-                }
-
-                continue;
-            }
             if ($token === '--') {
-                if ($command !== null) {
+                $remaining = array_slice($tokens, $index + 1);
+                if ($command === null) {
+                    $command = array_shift($remaining);
+                } else {
                     $commandTokens[] = '--';
-                    array_push($commandTokens, ...array_slice($tokens, $index + 1));
-
-                    break;
                 }
-                $endOfOptions = true;
+                array_push($commandTokens, ...$remaining);
 
-                continue;
+                break;
             }
-            if ($token === '--help' || $token === '-h') {
-                $global['help'] = true;
-
-                continue;
-            }
-            if ($token === '--version' || $token === '-V') {
-                $global['version'] = true;
-
-                continue;
-            }
-            if ($token === '--quiet' || $token === '-q') {
-                $global['quiet'] = true;
-
-                continue;
-            }
-            if ($token === '--no-interaction' || $token === '-n') {
-                $global['noInteraction'] = true;
-
-                continue;
-            }
-            if ($token === '--ansi') {
-                $global['ansi'] = true;
-
-                continue;
-            }
-            if ($token === '--no-ansi' || $token === '--no-color') {
-                $global['ansi'] = false;
-
-                continue;
-            }
-            if (preg_match('/^-v+$/', $token) === 1) {
-                $global['verbosity'] += strlen($token) - 1;
-
-                continue;
-            }
-            if (str_starts_with($token, '--format=')) {
-                $global['format'] = substr($token, 9);
-
-                continue;
-            }
-            if (str_starts_with($token, '--width=')) {
-                $global['width'] = $this->width(substr($token, 8));
-
-                continue;
-            }
-            if (str_starts_with($token, '--profile=')) {
-                $global['profile'] = substr($token, 10);
-
-                continue;
-            }
-            if ($token === '--format' || $token === '--width' || $token === '--profile') {
-                $index++;
-                if (!array_key_exists($index, $tokens)) {
-                    throw new UsageException(sprintf('Option "%s" requires a value.', $token));
-                }
-                if ($token === '--format') {
-                    $global['format'] = $tokens[$index];
-                }
-                if ($token === '--width') {
-                    $global['width'] = $this->width($tokens[$index]);
-                }
-                if ($token === '--profile') {
-                    $global['profile'] = $tokens[$index];
-                }
-
+            if ($this->consumeGlobalOption($token, $tokens, $index, $global)) {
                 continue;
             }
             if ($command === null) {

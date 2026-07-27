@@ -17,12 +17,22 @@ final readonly class ArgumentCollection
 
     public function bool(string $name): bool
     {
-        return $this->requireType($name, 'boolean');
+        $value = $this->get($name);
+        if (!is_bool($value)) {
+            throw new \UnexpectedValueException(sprintf('Argument "%s" is not a boolean.', $name));
+        }
+
+        return $value;
     }
 
     public function float(string $name): float
     {
-        return $this->requireType($name, 'double');
+        $value = $this->get($name);
+        if (!is_float($value)) {
+            throw new \UnexpectedValueException(sprintf('Argument "%s" is not a double.', $name));
+        }
+
+        return $value;
     }
 
     public function get(string $name): mixed
@@ -37,47 +47,49 @@ final readonly class ArgumentCollection
 
     public function int(string $name): int
     {
-        return $this->requireType($name, 'integer');
-    }
-
-    public function nullableFloat(string $name): ?float
-    {
-        return $this->nullableType($name, 'double');
-    }
-
-    public function nullableInt(string $name): ?int
-    {
-        return $this->nullableType($name, 'integer');
-    }
-
-    public function nullableString(string $name): ?string
-    {
-        return $this->nullableType($name, 'string');
-    }
-
-    public function string(string $name): string
-    {
-        return $this->requireType($name, 'string');
-    }
-
-    private function nullableType(string $name, string $type): mixed
-    {
         $value = $this->get($name);
-        if ($value === null) {
-            return null;
-        }
-        if (gettype($value) !== $type) {
-            throw new \UnexpectedValueException(sprintf('Argument "%s" is not a %s.', $name, $type));
+        if (!is_int($value)) {
+            throw new \UnexpectedValueException(sprintf('Argument "%s" is not an integer.', $name));
         }
 
         return $value;
     }
 
-    private function requireType(string $name, string $type): mixed
+    public function nullableFloat(string $name): ?float
     {
         $value = $this->get($name);
-        if (gettype($value) !== $type) {
-            throw new \UnexpectedValueException(sprintf('Argument "%s" is not a %s.', $name, $type));
+        if ($value !== null && !is_float($value)) {
+            throw new \UnexpectedValueException(sprintf('Argument "%s" is not a double.', $name));
+        }
+
+        return $value;
+    }
+
+    public function nullableInt(string $name): ?int
+    {
+        $value = $this->get($name);
+        if ($value !== null && !is_int($value)) {
+            throw new \UnexpectedValueException(sprintf('Argument "%s" is not an integer.', $name));
+        }
+
+        return $value;
+    }
+
+    public function nullableString(string $name): ?string
+    {
+        $value = $this->get($name);
+        if ($value !== null && !is_string($value)) {
+            throw new \UnexpectedValueException(sprintf('Argument "%s" is not a string.', $name));
+        }
+
+        return $value;
+    }
+
+    public function string(string $name): string
+    {
+        $value = $this->get($name);
+        if (!is_string($value)) {
+            throw new \UnexpectedValueException(sprintf('Argument "%s" is not a string.', $name));
         }
 
         return $value;

@@ -27,6 +27,9 @@ final class AnswerQueue implements InputReader
     public function readKey(): ?string
     {
         $value = array_shift($this->answers);
+        if ($value !== null && !is_scalar($value) && !$value instanceof \Stringable) {
+            throw new \UnexpectedValueException('Queued key answers must be scalar or stringable.');
+        }
 
         return $value === null ? null : (string) $value;
     }

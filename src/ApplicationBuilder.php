@@ -45,7 +45,7 @@ final class ApplicationBuilder
 
     private ?string $commandManifest = null;
 
-    /** @var list<class-string<CommandContract>>|array<string, class-string<CommandContract>> */
+    /** @var array<array-key, class-string<CommandContract>> */
     private array $commands = [];
 
     private ?string $completionManifest = null;
@@ -62,7 +62,7 @@ final class ApplicationBuilder
     /** @var array<string,mixed> */
     private array $configurationRules = [];
 
-    /** @var array<string,mixed> */
+    /** @var array<string, array<int, (callable(): mixed)|string>|(callable(): mixed)|string> */
     private array $configurationSanitizers = [];
 
     private ?ExecutionIdGenerator $executionIds = null;
@@ -200,7 +200,7 @@ final class ApplicationBuilder
         return $this;
     }
 
-    /** @param list<class-string<CommandContract>>|array<string, class-string<CommandContract>> $commands */
+    /** @param array<array-key, class-string<CommandContract>> $commands */
     public function commands(array $commands): self
     {
         $this->commands = $commands;
@@ -342,7 +342,10 @@ final class ApplicationBuilder
         return $this;
     }
 
-    /** @param array<string,mixed> $rules @param array<string,mixed> $sanitizers */
+    /**
+     * @param array<string, mixed> $rules
+     * @param array<string, array<int, (callable(): mixed)|string>|(callable(): mixed)|string> $sanitizers
+     */
     public function validateConfiguration(array $rules, array $sanitizers = [], bool $strict = false): self
     {
         $this->configurationRules = $rules;

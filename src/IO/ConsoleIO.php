@@ -51,7 +51,10 @@ final class ConsoleIO implements IO
 
     private ?int $widthOverride = null;
 
-    /** @param resource $output @param resource $errorOutput */
+    /**
+     * @param resource $output
+     * @param resource $errorOutput
+     */
     public function __construct(
         private readonly mixed $output,
         private readonly mixed $errorOutput,
@@ -203,6 +206,10 @@ final class ConsoleIO implements IO
         $this->emit($message, 'success');
     }
 
+    /**
+     * @param list<string> $headers
+     * @param list<array<array-key, scalar|null>> $rows
+     */
     public function table(array $headers, array $rows): void
     {
         $this->frame(new Table($headers, $rows)->frame($this->width()));

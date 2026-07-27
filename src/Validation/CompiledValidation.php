@@ -23,7 +23,15 @@ final readonly class CompiledValidation
     {
         $result = $this->validator->validate($values);
         if ($result->passes()) {
-            return new ValidationResult($result->typed());
+            $data = [];
+            foreach ($result->typed() as $key => $value) {
+                if (!is_string($key)) {
+                    throw new \UnexpectedValueException('Validated input must use string field names.');
+                }
+                $data[$key] = $value;
+            }
+
+            return new ValidationResult($data);
         }
         $failures = [];
         foreach ($result->toFlatErrors() as $failure) {

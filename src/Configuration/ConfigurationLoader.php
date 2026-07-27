@@ -9,7 +9,10 @@ use Infocyph\ArrayKit\ArrayKit;
 /** @internal */
 final class ConfigurationLoader
 {
-    /** @param list<array<array-key, mixed>> $layers @param list<string> $files */
+    /**
+     * @param list<array<array-key, mixed>> $layers
+     * @param list<string> $files
+     */
     public function load(array $layers = [], array $files = []): Configuration
     {
         $config = ArrayKit::config();

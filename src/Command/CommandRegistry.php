@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Console\Command;
 
+use Infocyph\Console\Support\ManifestValue;
+
 /**
  * @internal
  */
@@ -19,7 +21,7 @@ final class CommandRegistry
     private array $indexedFiles = [];
 
     /**
-     * @param list<class-string<CommandContract>>|array<string, class-string<CommandContract>> $commands
+     * @param array<array-key, class-string<CommandContract>> $commands
      */
     public function __construct(array $commands)
     {
@@ -31,23 +33,34 @@ final class CommandRegistry
         }
     }
 
-    /** @param array{commands: array<string,array{file:string,aliases?:list<string>,hidden?:bool}>} $manifest */
+    /** @param array<string, mixed> $manifest */
     public static function fromIndexedManifest(array $manifest, string $baseDirectory): self
     {
         $registry = new self([]);
-        foreach ($manifest['commands'] as $name => $summary) {
-            $registry->registerIndexed($name, $summary['aliases'] ?? [], $baseDirectory . DIRECTORY_SEPARATOR . $summary['file']);
+        $commands = ManifestValue::map($manifest['commands'] ?? null, 'commands');
+        foreach ($commands as $name => $value) {
+            $summary = ManifestValue::map($value, 'commands.' . $name);
+            $registry->registerIndexed(
+                $name,
+                ManifestValue::stringList($summary['aliases'] ?? [], 'commands.' . $name . '.aliases'),
+                $baseDirectory . DIRECTORY_SEPARATOR . ManifestValue::string(
+                    $summary['file'] ?? null,
+                    'commands.' . $name . '.file',
+                ),
+            );
         }
 
         return $registry;
     }
 
-    /** @param array<string, array<string,mixed>> $manifest */
+    /** @param array<string, mixed> $manifest */
     public static function fromManifest(array $manifest): self
     {
         $registry = new self([]);
-        foreach ($manifest as $descriptor) {
-            $registry->register(CommandDescriptor::fromManifest($descriptor));
+        foreach ($manifest as $name => $descriptor) {
+            $registry->register(CommandDescriptor::fromManifest(
+                ManifestValue::map($descriptor, 'commands.' . $name),
+            ));
         }
 
         return $registry;
@@ -105,7 +118,9 @@ final class CommandRegistry
         if (!is_array($manifest)) {
             throw new \RuntimeException(sprintf('Compiled descriptor for command "%s" is invalid.', $name));
         }
-        $command = CommandDescriptor::fromManifest($manifest);
+        $command = CommandDescriptor::fromManifest(
+            ManifestValue::map($manifest, 'commands.' . $name),
+        );
         foreach ([$command->name(), ...$command->aliases()] as $candidate) {
             $this->byName[$candidate] = $command;
         }

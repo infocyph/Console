@@ -180,6 +180,10 @@ final class BufferedIO implements IO
         $this->output[] = '[OK] ' . $message;
     }
 
+    /**
+     * @param list<string> $headers
+     * @param list<array<array-key, scalar|null>> $rows
+     */
     public function table(array $headers, array $rows): void
     {
         $this->frame(new Table($headers, $rows)->frame());

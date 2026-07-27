@@ -6,7 +6,11 @@ namespace Infocyph\Console\Terminal;
 
 final class CapabilityDetector
 {
-    /** @param resource $input @param resource $output @param array<string, string|false>|null $environment */
+    /**
+     * @param resource $input
+     * @param resource $output
+     * @param array<string, string|false>|null $environment
+     */
     public function detect(mixed $input = STDIN, mixed $output = STDOUT, ?array $environment = null): TerminalCapabilities
     {
         $environment ??= [];
@@ -51,7 +55,6 @@ final class CapabilityDetector
         return is_string($value) ? $value : '';
     }
 
-    /** @param resource $stream */
     private function isTty(mixed $stream): bool
     {
         if (!is_resource($stream)) {

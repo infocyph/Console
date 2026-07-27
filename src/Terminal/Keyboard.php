@@ -21,6 +21,9 @@ final readonly class Keyboard
         if ($value === null) {
             return null;
         }
+        if (!is_scalar($value) && !$value instanceof \Stringable) {
+            throw new \UnexpectedValueException('Keyboard input must be scalar or stringable.');
+        }
         $value = (string) $value;
         if ($value !== "\033") {
             return match ($value) {

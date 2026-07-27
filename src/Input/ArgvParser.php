@@ -78,6 +78,30 @@ final class ArgvParser
         };
     }
 
+    private function booleanDefault(mixed $value, string $name): bool
+    {
+        if (is_string($value)) {
+            return $this->boolean($value, $name);
+        }
+        if (!is_bool($value) && !is_int($value) && !is_float($value)) {
+            throw new \LogicException(sprintf('Default value for "%s" must be boolean-compatible.', $name));
+        }
+
+        return (bool) $value;
+    }
+
+    private function configuredDefault(Argument|Option $definition): mixed
+    {
+        $environment = $definition->environmentVariable();
+        if ($environment === null) {
+            return $definition->defaultValue();
+        }
+
+        $value = getenv($environment);
+
+        return $value === false ? $definition->defaultValue() : $value;
+    }
+
     private function convert(string $value, ValueType $type, string $name): mixed
     {
         return match ($type) {
@@ -90,43 +114,26 @@ final class ArgvParser
 
     private function defaultValue(Argument|Option $definition): mixed
     {
-        $value = $definition->defaultValue();
-        $environment = $definition->environmentVariable();
-        if ($environment !== null) {
-            $fromEnvironment = getenv($environment);
-            if ($fromEnvironment !== false) {
-                $value = $fromEnvironment;
-            }
-        }
+        $value = $this->configuredDefault($definition);
 
         if ($value === null) {
             return $value;
         }
 
         if ($definition instanceof Option && !$definition->acceptsValue()) {
-            return is_string($value) ? $this->boolean($value, $definition->name()) : (bool) $value;
+            return $this->booleanDefault($value, $definition->name());
         }
 
         if ($definition instanceof Option && $definition->multipleValues()) {
-            return is_string($value)
-                ? [$this->convert($value, $definition->valueType(), $definition->name())]
-                : $value;
+            return $this->multipleOptionDefault($value, $definition);
         }
 
         if ($definition instanceof Argument && $definition->isVariadic()) {
-            if (!is_array($value)) {
-                $delimiter = $definition->environmentDelimiter();
-                if ($delimiter === null) {
-                    throw new \LogicException('Variadic argument values require an explicit environment delimiter.');
-                }
-                $value = $delimiter === '' ? [$value] : explode($delimiter, (string) $value);
-            }
-
             return array_map(
                 fn(mixed $item): mixed => is_string($item)
                     ? $this->convert($item, $definition->valueType(), $definition->name())
                     : $item,
-                $value,
+                $this->variadicDefault($value, $definition),
             );
         }
 
@@ -151,6 +158,19 @@ final class ArgvParser
         }
 
         return (int) $value;
+    }
+
+    /** @return list<mixed> */
+    private function multipleOptionDefault(mixed $value, Option $definition): array
+    {
+        if (is_string($value)) {
+            return [$this->convert($value, $definition->valueType(), $definition->name())];
+        }
+        if (!is_array($value)) {
+            throw new \LogicException(sprintf('Default value for multiple option "%s" must be an array.', $definition->name()));
+        }
+
+        return array_values($value);
     }
 
     /**
@@ -320,7 +340,12 @@ final class ArgvParser
 
         $seen[$name] = true;
         if ($option->multipleValues()) {
-            $values[$name][] = $value;
+            $existing = $values[$name] ?? [];
+            if (!is_array($existing)) {
+                throw new \LogicException(sprintf('Multiple option "%s" must be initialized with an array.', $name));
+            }
+            $existing[] = $value;
+            $values[$name] = $existing;
 
             return;
         }
@@ -342,5 +367,26 @@ final class ArgvParser
         return $suggestion !== null && $ranked[$suggestion] <= max(2, (int) floor(strlen($name) / 2))
             ? $message . sprintf(' Did you mean "%s"?', $suggestion)
             : $message;
+    }
+
+    /** @return list<mixed> */
+    private function variadicDefault(mixed $value, Argument $definition): array
+    {
+        if (is_array($value)) {
+            return array_values($value);
+        }
+
+        if (!is_scalar($value) && !$value instanceof \Stringable) {
+            throw new \LogicException(sprintf('Default value for variadic argument "%s" must be scalar, stringable, or an array.', $definition->name()));
+        }
+
+        $delimiter = $definition->environmentDelimiter();
+        if ($delimiter === null) {
+            throw new \LogicException('Variadic argument values require an explicit environment delimiter.');
+        }
+
+        $string = (string) $value;
+
+        return $delimiter === '' ? [$string] : explode($delimiter, $string);
     }
 }
