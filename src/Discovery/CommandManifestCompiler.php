@@ -7,7 +7,6 @@ namespace Infocyph\Console\Discovery;
 use Infocyph\Console\Command\CommandContract;
 use Infocyph\Console\Command\CommandDescriptor;
 
-/** @internal */
 final class CommandManifestCompiler
 {
     /**

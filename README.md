@@ -51,6 +51,17 @@ Use directly includable manifests to keep validation and completion in the
 preflight path:
 
 ```php
+use Infocyph\Console\Discovery\CommandManifestCompiler;
+
+$commands = [
+    'user:create' => CreateUserCommand::class,
+];
+
+new CommandManifestCompiler()->write(
+    $commands,
+    __DIR__.'/cache/commands.php',
+);
+
 $application = Application::configure()
     ->commandManifest(__DIR__.'/cache/commands.php')
     ->validationManifest(__DIR__.'/cache/validation.php')
