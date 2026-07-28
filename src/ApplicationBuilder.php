@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Infocyph\Console;
 
+use Infocyph\CacheLayer\Cache\Lock\LockProviderInterface;
+use Infocyph\Console\Cache\CommandMutex;
 use Infocyph\Console\Command\Capability;
 use Infocyph\Console\Command\CommandContract;
+use Infocyph\Console\Command\CommandExecutionCoordinator;
 use Infocyph\Console\Command\CommandRegistry;
 use Infocyph\Console\Command\CommandResolver;
 use Infocyph\Console\Command\CommandResolverProvider;
@@ -24,6 +27,7 @@ use Infocyph\Console\IO\ConsoleIO;
 use Infocyph\Console\IO\IO;
 use Infocyph\Console\Otp\CommandOtpAuthorizer;
 use Infocyph\Console\Otp\OtpVerifier;
+use Infocyph\Console\Process\ProcessRunner;
 use Infocyph\Console\Security\CommandAuthorizationPolicy;
 use Infocyph\Console\Style\Theme;
 use Infocyph\Console\Validation\DBLayerDatabaseProvider;
@@ -65,11 +69,16 @@ final class ApplicationBuilder
     /** @var array<string, array<int, (callable(): mixed)|string>|(callable(): mixed)|string> */
     private array $configurationSanitizers = [];
 
+    private ?string $executable = null;
+
     private ?ExecutionIdGenerator $executionIds = null;
 
     private ?ConfigurationProvider $externalConfiguration = null;
 
     private ?IO $io = null;
+
+    /** @var null|\Closure(): LockProviderInterface */
+    private ?\Closure $locks = null;
 
     private string $name = 'console';
 
@@ -128,6 +137,7 @@ final class ApplicationBuilder
         $validationManifest = $this->validationManifest;
         $capabilityConfigurers = $this->capabilityConfigurers;
         $executionIds = $this->executionIds;
+        $locks = $this->locks;
         $otpVerifier = $this->otpVerifier;
         $authorizationPolicy = $this->authorizationPolicy;
 
@@ -182,6 +192,13 @@ final class ApplicationBuilder
             ),
             $io,
             $this->completionManifest,
+            new CommandExecutionCoordinator(
+                new ProcessRunner(),
+                $locks === null
+                    ? null
+                    : static fn(): CommandMutex => new CommandMutex($locks()),
+                $this->executable,
+            ),
         );
     }
 
@@ -281,6 +298,16 @@ final class ApplicationBuilder
         return $this;
     }
 
+    public function executable(string $path): self
+    {
+        if ($path === '') {
+            throw new \InvalidArgumentException('The console executable path cannot be empty.');
+        }
+        $this->executable = $path;
+
+        return $this;
+    }
+
     public function executionIdGenerator(ExecutionIdGenerator $generator): self
     {
         $this->executionIds = $generator;
@@ -291,6 +318,21 @@ final class ApplicationBuilder
     public function io(IO $io): self
     {
         $this->io = $io;
+
+        return $this;
+    }
+
+    public function lockProvider(LockProviderInterface $provider): self
+    {
+        $this->locks = static fn(): LockProviderInterface => $provider;
+
+        return $this;
+    }
+
+    /** @param \Closure(): LockProviderInterface $provider */
+    public function lockProviderFactory(\Closure $provider): self
+    {
+        $this->locks = $provider;
 
         return $this;
     }

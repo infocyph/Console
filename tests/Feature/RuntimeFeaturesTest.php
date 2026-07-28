@@ -736,12 +736,17 @@ it('runs due schedules with callbacks, state recording, cron matching, and overl
     {
         public int $acquired = 0;
 
-        public function acquire(string $key, float $waitSeconds): ?LockHandle
+        public function acquire(string $key, float $waitSeconds, float $leaseSeconds = 30.0): ?LockHandle
         {
-            unset($waitSeconds);
+            unset($waitSeconds, $leaseSeconds);
             $this->acquired++;
 
             return new LockHandle($key, 'token');
+        }
+
+        public function refresh(?LockHandle $handle, float $leaseSeconds): bool
+        {
+            return $handle instanceof LockHandle && $leaseSeconds > 0;
         }
 
         public function release(?LockHandle $handle): void {}

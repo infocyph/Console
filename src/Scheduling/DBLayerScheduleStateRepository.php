@@ -12,6 +12,13 @@ final readonly class DBLayerScheduleStateRepository implements ScheduleStateRepo
 
     public function record(ScheduleRun $run): void
     {
-        DB::table($this->table, $this->connection)->insert(['id' => $run->id, 'command' => $run->command, 'scheduled_at' => $run->scheduledAt, 'finished_at' => $run->finishedAt, 'exit_code' => $run->exitCode]);
+        DB::table($this->table, $this->connection)->insert([
+            'id' => $run->id,
+            'command' => $run->command,
+            'scheduled_at' => $run->scheduledAt,
+            'finished_at' => $run->finishedAt,
+            'exit_code' => $run->exitCode,
+            'status' => $run->status->value,
+        ]);
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Console;
 
 use Infocyph\Console\Command\CommandDescriptor;
+use Infocyph\Console\Command\CommandExecutionCoordinator;
 use Infocyph\Console\Command\CommandRegistry;
 use Infocyph\Console\Command\CommandResolverProvider;
 use Infocyph\Console\Command\ExitCode;
@@ -29,6 +30,7 @@ final readonly class Application
         private CommandResolverProvider $commands,
         private IO $io,
         private ?string $completionManifest = null,
+        private ?CommandExecutionCoordinator $execution = null,
     ) {}
 
     public static function configure(): ApplicationBuilder
@@ -43,11 +45,12 @@ final readonly class Application
         $verbosity = 0;
 
         try {
-            [$global, $commandName, $commandTokens] = $this->splitGlobalOptions($argv ?? $this->serverArguments());
+            $arguments = $argv ?? $this->serverArguments();
+            [$global, $commandName, $commandTokens] = $this->splitGlobalOptions($arguments);
             $verbosity = $global['verbosity'];
             $io = $this->configureIO($global);
 
-            return $this->dispatch($global, $commandName, $commandTokens, $io);
+            return $this->dispatch($global, $commandName, $commandTokens, $arguments, $io);
         } catch (ValidationFailedException $exception) {
             $io->validationFailures(array_map(static fn($failure): array => $failure->toArray(), $exception->failures()));
 
@@ -73,7 +76,14 @@ final readonly class Application
 
     public function withIO(IO $io): self
     {
-        return new self($this->metadata, $this->registry, $this->commands, $io, $this->completionManifest);
+        return new self(
+            $this->metadata,
+            $this->registry,
+            $this->commands,
+            $io,
+            $this->completionManifest,
+            $this->execution,
+        );
     }
 
     private function commandNotFound(string $name, IO $io): int
@@ -194,9 +204,15 @@ final readonly class Application
      *     profile: ?string
      * } $global
      * @param list<string> $commandTokens
+     * @param list<string> $arguments
      */
-    private function dispatch(array $global, ?string $commandName, array $commandTokens, IO $io): int
-    {
+    private function dispatch(
+        array $global,
+        ?string $commandName,
+        array $commandTokens,
+        array $arguments,
+        IO $io,
+    ): int {
         if ($global['version']) {
             return ExitCode::SUCCESS;
         }
@@ -227,7 +243,9 @@ final readonly class Application
         $commands->useProfile($global['profile']);
         $input = new ArgvParser()->parse($descriptor, $commandTokens);
 
-        return $commands->run($descriptor, $input, $io);
+        $inline = static fn(): int => $commands->run($descriptor, $input, $io);
+
+        return $this->execution?->run($descriptor, $arguments, $inline, $io) ?? $inline();
     }
 
     /** @param list<string> $commandTokens */

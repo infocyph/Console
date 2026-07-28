@@ -20,14 +20,32 @@ final class CommandDefinition
 
     private string $description = '';
 
+    private CommandExecutionMode $executionMode = CommandExecutionMode::INLINE;
+
     private bool $hidden = false;
+
+    private ?float $idleTimeoutSeconds = null;
+
+    private float $leaseSeconds = 300.0;
+
+    private ?int $memoryLimitMegabytes = null;
+
+    private ?string $mutex = null;
 
     private ?string $name = null;
 
     /** @var array<string, Option> */
     private array $options = [];
 
+    private OverlapMode $overlap = OverlapMode::ALLOW;
+
     private bool $requiresOtp = false;
+
+    private float $terminationGraceSeconds = 5.0;
+
+    private ?float $timeoutSeconds = null;
+
+    private float $waitSeconds = 0.0;
 
     public function alias(string $alias): self
     {
@@ -126,12 +144,46 @@ final class CommandDefinition
             $this->hidden,
             $this->capabilities,
             $this->requiresOtp,
+            new CommandExecutionPolicy(
+                $this->executionMode,
+                $this->overlap,
+                $this->mutex,
+                $this->waitSeconds,
+                $this->leaseSeconds,
+                $this->timeoutSeconds,
+                $this->idleTimeoutSeconds,
+                $this->terminationGraceSeconds,
+                $this->memoryLimitMegabytes,
+            ),
         );
     }
 
     public function hidden(bool $hidden = true): self
     {
         $this->hidden = $hidden;
+
+        return $this;
+    }
+
+    public function idleTimeout(float $seconds): self
+    {
+        $this->idleTimeoutSeconds = $seconds;
+        $this->executionMode = CommandExecutionMode::ISOLATED;
+
+        return $this;
+    }
+
+    public function isolated(bool $isolated = true): self
+    {
+        $this->executionMode = $isolated ? CommandExecutionMode::ISOLATED : CommandExecutionMode::INLINE;
+
+        return $this;
+    }
+
+    public function memoryLimit(int $megabytes): self
+    {
+        $this->memoryLimitMegabytes = $megabytes;
+        $this->executionMode = CommandExecutionMode::ISOLATED;
 
         return $this;
     }
@@ -173,6 +225,29 @@ final class CommandDefinition
         if ($required && !in_array(Capability::OTP, $this->capabilities, true)) {
             $this->capabilities[] = Capability::OTP;
         }
+
+        return $this;
+    }
+
+    public function timeout(float $seconds, float $terminationGraceSeconds = 5.0): self
+    {
+        $this->timeoutSeconds = $seconds;
+        $this->terminationGraceSeconds = $terminationGraceSeconds;
+        $this->executionMode = CommandExecutionMode::ISOLATED;
+
+        return $this;
+    }
+
+    public function withoutOverlap(
+        ?string $mutex = null,
+        float $leaseSeconds = 300.0,
+        float $waitSeconds = 0.0,
+    ): self {
+        $this->mutex = $mutex;
+        $this->leaseSeconds = $leaseSeconds;
+        $this->waitSeconds = $waitSeconds;
+        $this->overlap = $waitSeconds > 0 ? OverlapMode::WAIT : OverlapMode::SKIP;
+        $this->executionMode = CommandExecutionMode::ISOLATED;
 
         return $this;
     }

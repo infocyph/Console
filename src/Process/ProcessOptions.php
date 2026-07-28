@@ -12,6 +12,7 @@ final readonly class ProcessOptions
      * @param null|callable(string): void $onOutput
      * @param null|callable(string): void $onErrorOutput
      * @param null|callable(): bool $cancelled
+     * @param null|callable(): bool $heartbeat
      * @param resource|string|null $input
      */
     public function __construct(
@@ -24,15 +25,20 @@ final readonly class ProcessOptions
         public mixed $onOutput = null,
         public mixed $onErrorOutput = null,
         public mixed $cancelled = null,
+        public mixed $heartbeat = null,
         public mixed $input = null,
         public bool $inheritInput = false,
         public ProcessMode $mode = ProcessMode::CAPTURE,
+        public float $terminationGraceSeconds = 5.0,
     ) {
         if ($timeoutSeconds !== null && $timeoutSeconds <= 0) {
             throw new \InvalidArgumentException('Process timeout must be positive.');
         }
         if ($idleTimeoutSeconds !== null && $idleTimeoutSeconds <= 0) {
             throw new \InvalidArgumentException('Process idle timeout must be positive.');
+        }
+        if ($terminationGraceSeconds < 0) {
+            throw new \InvalidArgumentException('Process termination grace cannot be negative.');
         }
     }
 }

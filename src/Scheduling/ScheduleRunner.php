@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Infocyph\Console\Scheduling;
 
 use Infocyph\Console\Cache\CommandMutex;
+use Infocyph\Console\Command\ExitCode;
 use Infocyph\UID\Id;
 
 final readonly class ScheduleRunner
@@ -12,7 +13,7 @@ final readonly class ScheduleRunner
     public function __construct(private ?CommandMutex $mutex = null, private ?ScheduleStateRepository $state = null) {}
 
     /**
-     * @param callable(string): int $executor
+     * @param callable(string, ScheduledCommand, ?ScheduleLease): int $executor
      * @return list<ScheduleRun>
      */
     public function runDue(Schedule $schedule, callable $executor, ?\DateTimeInterface $now = null): array
@@ -23,31 +24,30 @@ final readonly class ScheduleRunner
             if (!$entry->due($now)) {
                 continue;
             }
-            $operation = fn(): ScheduleRun => $this->run($entry, $executor, $now);
-            $run = $operation;
-            if ($entry->preventsOverlap()) {
-                $mutex = $this->mutex ?? throw new \LogicException('Schedules using withoutOverlap require a CommandMutex.');
-                $previous = $run;
-                $run = fn(): ScheduleRun => $mutex->synchronized('schedule:' . $entry->command(), $previous);
-            }
-            if ($entry->requiresSingleServer()) {
-                $mutex = $this->mutex ?? throw new \LogicException('Schedules using onOneServer require a CommandMutex.');
-                $previous = $run;
-                $run = fn(): ScheduleRun => $mutex->synchronized('schedule:single-server:' . $entry->command(), $previous);
-            }
-            $runs[] = $run();
+            $runs[] = $this->runEntry($entry, $executor, $now);
         }
 
         return $runs;
     }
 
-    /** @param callable(string): int $executor */
-    private function run(ScheduledCommand $entry, callable $executor, \DateTimeInterface $now): ScheduleRun
+    private function mutexName(ScheduledCommand $entry): string
     {
+        $scope = $entry->requiresSingleServer() ? 'single-server:' : 'overlap:';
+
+        return 'schedule:' . $scope . hash('sha256', serialize($entry->toManifest()));
+    }
+
+    /** @param callable(string, ScheduledCommand, ?ScheduleLease): int $executor */
+    private function run(
+        ScheduledCommand $entry,
+        callable $executor,
+        \DateTimeInterface $now,
+        ?ScheduleLease $lease = null,
+    ): ScheduleRun {
         try {
-            $exitCode = $executor($entry->command());
+            $exitCode = $executor($entry->command(), $entry, $lease);
         } catch (\Throwable) {
-            $exitCode = 1;
+            $exitCode = ExitCode::FAILURE;
         }
         $run = new ScheduleRun(Id::uuid(), $entry->command(), $now->getTimestamp(), time(), $exitCode);
         $this->state?->record($run);
@@ -56,6 +56,55 @@ final readonly class ScheduleRunner
         } else {
             $entry->failure($run);
         }
+
+        return $run;
+    }
+
+    /**
+     * @param callable(string, ScheduledCommand, ?ScheduleLease): int $executor
+     */
+    private function runEntry(
+        ScheduledCommand $entry,
+        callable $executor,
+        \DateTimeInterface $now,
+    ): ScheduleRun {
+        if (!$entry->preventsOverlap() && !$entry->requiresSingleServer()) {
+            return $this->run($entry, $executor, $now);
+        }
+
+        $mutex = $this->mutex ?? throw new \LogicException('Locked schedules require a CommandMutex.');
+        $handle = $mutex->acquire(
+            $this->mutexName($entry),
+            $entry->overlapWaitSeconds(),
+            $entry->overlapLeaseSeconds(),
+        );
+        if ($handle === null) {
+            return $this->skipped($entry, $now);
+        }
+
+        try {
+            $lease = new ScheduleLease(
+                fn(): bool => $mutex->refresh($handle, $entry->overlapLeaseSeconds()),
+                $entry->overlapLeaseSeconds(),
+            );
+
+            return $this->run($entry, $executor, $now, $lease);
+        } finally {
+            $mutex->release($handle);
+        }
+    }
+
+    private function skipped(ScheduledCommand $entry, \DateTimeInterface $now): ScheduleRun
+    {
+        $run = new ScheduleRun(
+            Id::uuid(),
+            $entry->command(),
+            $now->getTimestamp(),
+            time(),
+            ExitCode::SUCCESS,
+            ScheduleRunStatus::SKIPPED,
+        );
+        $this->state?->record($run);
 
         return $run;
     }

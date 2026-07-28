@@ -38,9 +38,15 @@ Phases 1–9 and 11 of the architecture are implemented:
 - Cross-platform hardening for CI and redirected terminals, global option
   validation, JSON error paths, subprocess environments, signal fallbacks,
   and workspace boundary checks.
-- Initial scheduling primitives with cron frequencies, callbacks, overlap
-  mutexes, and optional persistence; plus a production argv process runner
-  with streaming, timeouts, cancellation, and redaction.
+- Compiled command execution policies for zero-overhead inline commands and
+  opt-in isolated commands with overlap locks, timeouts, idle timeouts, memory
+  limits, renewable leases, and graceful termination.
+- Scheduling with cron frequencies, callbacks, non-throwing skip outcomes,
+  single-server/overlap leases, compiled manifests, and per-entry process
+  limits.
+- A queue-neutral dynamic worker supervisor with bounded incremental scaling,
+  process and supervisor lifetimes, start limits, safe draining, opt-in
+  signal-aware scale-down, and graceful/forced shutdown accounting.
 - Compiled validation-manifest loading, shell completion generation, themed ANSI
   rendering, semantic components, prompt hints/filtering, fuzzy suggestions,
   verbosity-aware diagnostics, and CI performance guardrails.
@@ -145,6 +151,56 @@ Reusable Console-specific services include `Workspace` for safe atomic files,
 `SecretStore`, `SecureConfiguration`, `ArtifactVerifier`,
 `ReleaseSignatureVerifier`, and `RemoteClient`. Database connections and HTTP
 clients remain application-configured; Console never opens them automatically.
+
+## Execution controls, schedules, and workers
+
+Inline remains the default command mode. Controls that require enforcement
+promote only the declaring command to a supervised child process:
+
+```php
+$command
+    ->name('reports:build')
+    ->withoutOverlap('reports', leaseSeconds: 120, waitSeconds: 5)
+    ->timeout(90, terminationGraceSeconds: 5)
+    ->idleTimeout(30)
+    ->memoryLimit(256);
+```
+
+The execution policy is compiled into the command descriptor. Configure locks
+with `ApplicationBuilder::lockProvider()` or
+`lockProviderFactory()`. The factory stays lazy through help, list, completion,
+version, and ordinary inline commands. CacheLayer file, Redis, Valkey,
+Memcached, and PDO providers share the same lease contract.
+
+Schedules accept argv as separate values, so arguments containing spaces do
+not require shell parsing:
+
+```php
+$schedule
+    ->command('reports:build')
+    ->arguments(['--tenant=acme'])
+    ->dailyAt('02:00')
+    ->onOneServer(leaseSeconds: 180)
+    ->withoutOverlap(leaseSeconds: 180)
+    ->timeout(120)
+    ->memoryLimit(256);
+```
+
+`ScheduleRunner` records an explicit skipped run when a lock is busy and
+continues with other due entries. Its executor receives a `ScheduleLease`; pass
+`heartbeat()` to the supervising process so expiring distributed locks are
+renewed.
+
+Applications using `DBLayerScheduleStateRepository` must provide its table,
+including a `status` text column for the `completed` and `skipped` values.
+Console records schedule state but never creates or migrates application tables.
+
+Implement `WorkloadProbe::pending()` and run `WorkerSupervisor` with
+`WorkerOptions`. Desired concurrency is
+`ceil(pending / jobsPerProcess)`, bounded by the configured minimum, maximum,
+and scale step. One-shot workers drain by default. Set
+`scaleDownProcesses: true` only when child workers handle termination signals
+and can stop without abandoning an active job.
 
 ## Framework integration
 

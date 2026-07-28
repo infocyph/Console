@@ -30,6 +30,7 @@ final readonly class CommandDescriptor
         private bool $hidden,
         private array $capabilities,
         private bool $requiresOtp = false,
+        private CommandExecutionPolicy $execution = new CommandExecutionPolicy(),
     ) {}
 
     /**
@@ -85,6 +86,10 @@ final readonly class CommandDescriptor
             ManifestValue::bool($manifest['hidden'] ?? null, 'command.hidden'),
             $capabilities,
             ManifestValue::bool($manifest['requires_otp'] ?? null, 'command.requires_otp'),
+            CommandExecutionPolicy::fromManifest(ManifestValue::map(
+                $manifest['execution'] ?? [],
+                'command.execution',
+            )),
         );
     }
 
@@ -117,6 +122,11 @@ final readonly class CommandDescriptor
         return $this->description;
     }
 
+    public function execution(): CommandExecutionPolicy
+    {
+        return $this->execution;
+    }
+
     public function hidden(): bool
     {
         return $this->hidden;
@@ -141,6 +151,6 @@ final readonly class CommandDescriptor
     /** @return array<string,mixed> */
     public function toManifest(): array
     {
-        return ['class' => $this->class, 'name' => $this->name, 'description' => $this->description, 'arguments' => array_map(static fn(Argument $argument): array => $argument->toManifest(), $this->arguments), 'options' => array_map(static fn(Option $option): array => $option->toManifest(), $this->options), 'aliases' => $this->aliases, 'hidden' => $this->hidden, 'capabilities' => array_map(static fn(Capability $capability): string => $capability->value, $this->capabilities), 'requires_otp' => $this->requiresOtp];
+        return ['class' => $this->class, 'name' => $this->name, 'description' => $this->description, 'arguments' => array_map(static fn(Argument $argument): array => $argument->toManifest(), $this->arguments), 'options' => array_map(static fn(Option $option): array => $option->toManifest(), $this->options), 'aliases' => $this->aliases, 'hidden' => $this->hidden, 'capabilities' => array_map(static fn(Capability $capability): string => $capability->value, $this->capabilities), 'requires_otp' => $this->requiresOtp, 'execution' => $this->execution->toManifest()];
     }
 }

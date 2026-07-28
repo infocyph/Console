@@ -96,6 +96,11 @@ final class ProcessRunner
         }
     }
 
+    private function heartbeatFailed(ProcessOptions $options): bool
+    {
+        return $options->heartbeat !== null && !(bool) ($options->heartbeat)();
+    }
+
     /** @param list<string> $command */
     private function inherit(array $command, ProcessOptions $options): ProcessResult
     {
@@ -107,8 +112,9 @@ final class ProcessRunner
         $started = microtime(true);
         while (($status = proc_get_status($process))['running']) {
             $timedOut = $options->timeoutSeconds !== null && microtime(true) - $started >= $options->timeoutSeconds;
-            if ($this->cancelled($options) || $this->interrupted || $timedOut) {
-                proc_terminate($process);
+            if ($this->cancelled($options) || $this->interrupted || $timedOut || $this->heartbeatFailed($options)) {
+                $this->terminate($process, $options->terminationGraceSeconds);
+                proc_close($process);
 
                 return new ProcessResult(ExitCode::INTERRUPTED, '', '', $timedOut);
             }
@@ -148,7 +154,8 @@ final class ProcessRunner
 
                 $termination = $this->terminationReason($options, $now, $startedAt, $lastActivity);
                 if ($termination !== null) {
-                    proc_terminate($process, $termination === 'cancelled' && defined('SIGINT') ? SIGINT : 15);
+                    $signal = $termination === 'cancelled' && defined('SIGINT') ? SIGINT : 15;
+                    $this->terminate($process, $options->terminationGraceSeconds, $signal);
 
                     break;
                 }
@@ -214,6 +221,22 @@ final class ProcessRunner
         return $activity;
     }
 
+    /** @param resource $process */
+    private function terminate($process, float $graceSeconds, int $signal = 15): void
+    {
+        proc_terminate($process, $signal);
+        $deadline = microtime(true) + $graceSeconds;
+        while ($graceSeconds > 0 && microtime(true) < $deadline) {
+            if (!proc_get_status($process)['running']) {
+                return;
+            }
+            usleep(10_000);
+        }
+        if (proc_get_status($process)['running']) {
+            proc_terminate($process, defined('SIGKILL') ? SIGKILL : 9);
+        }
+    }
+
     private function terminationReason(ProcessOptions $options, float $now, float $startedAt, float $lastActivity): ?string
     {
         if ($this->cancelled($options) || $this->interrupted) {
@@ -224,6 +247,9 @@ final class ProcessRunner
         }
         if ($options->idleTimeoutSeconds !== null && $now - $lastActivity >= $options->idleTimeoutSeconds) {
             return 'idle-timeout';
+        }
+        if ($this->heartbeatFailed($options)) {
+            return 'heartbeat';
         }
 
         return null;
