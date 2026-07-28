@@ -15,7 +15,7 @@ it('keeps optional adapters out of production requirements', function (): void {
         'infocyph/intermix',
         'infocyph/uid',
     ])->and($composer['require-dev']['infocyph/cachelayer'] ?? null)->toBe('^2.0')
-        ->and($composer['require-dev']['infocyph/dblayer'] ?? null)->toBe('^2.2')
+        ->and($composer['require-dev']['infocyph/dblayer'] ?? null)->toBe('^2.3')
         ->and(array_keys($composer['suggest']))->toContain(
         'infocyph/cachelayer',
         'infocyph/dblayer',
