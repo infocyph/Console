@@ -47,6 +47,9 @@ final class ApplicationBuilder
     /** @var array<string, list<\Closure(Container): void>> */
     private array $capabilityConfigurers = [];
 
+    /** @var array<string, string> */
+    private array $commandGroups = [];
+
     private ?string $commandManifest = null;
 
     /** @var array<array-key, class-string<CommandContract>> */
@@ -144,6 +147,7 @@ final class ApplicationBuilder
         return new Application(
             new ApplicationMetadata($this->name, $this->version),
             $this->commandManifest === null ? new CommandRegistry($this->commands) : CommandManifest::registry($this->commandManifest),
+            $this->commandGroups,
             new CommandResolverProvider(
                 static function () use (
                     $authorizationPolicy,
@@ -206,6 +210,31 @@ final class ApplicationBuilder
     public function command(string $command): self
     {
         $this->commands[] = $command;
+
+        return $this;
+    }
+
+    public function commandGroup(string $group, string ...$commands): self
+    {
+        $group = trim($group);
+        if ($group === '') {
+            throw new \InvalidArgumentException('A command group name cannot be empty.');
+        }
+
+        foreach ($commands as $command) {
+            if ($command === '') {
+                throw new \InvalidArgumentException('A grouped command name must be a non-empty string.');
+            }
+            if (isset($this->commandGroups[$command]) && $this->commandGroups[$command] !== $group) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Command "%s" is already assigned to group "%s".',
+                    $command,
+                    $this->commandGroups[$command],
+                ));
+            }
+
+            $this->commandGroups[$command] = $group;
+        }
 
         return $this;
     }

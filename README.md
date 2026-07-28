@@ -232,6 +232,17 @@ Local Console configuration layers, files, profiles, and validation cannot be
 combined with an external provider, avoiding ambiguous precedence.
 Configured validation manifests are not included for version, help, list, or
 completion; they are loaded once when a real command first needs validation.
+Command listings group commands by the first segment of their route name, so
+`reports:daily` appears under `reports`. Commands without a namespace appear
+under `Application`. Framework integrations may explicitly group owned commands
+without changing their public route names:
+
+```php
+$application = Application::configure()
+    ->commands($commands)
+    ->commandGroup('System', 'config:cache', 'config:clear')
+    ->build();
+```
 
 ```php
 use Infocyph\Console\Application;

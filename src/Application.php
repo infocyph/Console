@@ -27,6 +27,8 @@ final readonly class Application
     public function __construct(
         private ApplicationMetadata $metadata,
         private CommandRegistry $registry,
+        /** @var array<string, string> */
+        private array $commandGroups,
         private CommandResolverProvider $commands,
         private IO $io,
         private ?string $completionManifest = null,
@@ -79,11 +81,24 @@ final readonly class Application
         return new self(
             $this->metadata,
             $this->registry,
+            $this->commandGroups,
             $this->commands,
             $io,
             $this->completionManifest,
             $this->execution,
         );
+    }
+
+    private function commandGroup(CommandDescriptor $command): string
+    {
+        $name = $command->name();
+        if (isset($this->commandGroups[$name])) {
+            return $this->commandGroups[$name];
+        }
+
+        $separator = strpos($name, ':');
+
+        return $separator === false ? 'Application' : substr($name, 0, $separator);
     }
 
     private function commandNotFound(string $name, IO $io): int
@@ -358,8 +373,18 @@ final readonly class Application
     private function renderCommandList(IO $io): void
     {
         $io->text('Available commands:');
+
+        $groups = [];
         foreach ($this->registry->visible() as $command) {
-            $io->text(sprintf('  %-24s %s', $command->name(), $command->description()));
+            $groups[$this->commandGroup($command)][] = $command;
+        }
+
+        foreach ($groups as $group => $commands) {
+            $io->text('');
+            $io->text($group . ':');
+            foreach ($commands as $command) {
+                $io->text(sprintf('  %-24s %s', $command->name(), $command->description()));
+            }
         }
     }
 

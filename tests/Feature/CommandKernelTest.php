@@ -112,6 +112,41 @@ it('uses the command preflight paths without constructing registered commands', 
         ->and(UnconstructedFixtureCommand::$instances)->toBe(0);
 });
 
+it('groups commands by explicit group or route namespace without constructing them', function (): void {
+    UnconstructedFixtureCommand::$instances = 0;
+    $io = new BufferedIO;
+    $application = Application::configure()
+        ->commands([
+            KernelFixtureCommand::class,
+            UnconstructedFixtureCommand::class,
+            VariadicEnvironmentFixtureCommand::class,
+        ])
+        ->commandGroup('System', 'users:create')
+        ->io($io)
+        ->build();
+
+    expect($application->run(['tool', 'list']))->toBe(ExitCode::SUCCESS)
+        ->and($io->outputText())->toContain(
+            "Available commands:\n\nSystem:\n  users:create",
+            "\n\nApplication:\n  unconstructed",
+            "\n\nids:\n  ids:show",
+        )
+        ->and(UnconstructedFixtureCommand::$instances)->toBe(0);
+});
+
+it('rejects invalid and conflicting explicit command groups', function (): void {
+    expect(fn () => Application::configure()->commandGroup(''))
+        ->toThrow(InvalidArgumentException::class, 'cannot be empty')
+        ->and(fn () => Application::configure()->commandGroup('System', ''))
+        ->toThrow(InvalidArgumentException::class, 'non-empty string')
+        ->and(fn () => Application::configure()->commandGroup('System', 1))
+        ->toThrow(TypeError::class)
+        ->and(fn () => Application::configure()
+            ->commandGroup('System', 'users:create')
+            ->commandGroup('users', 'users:create'))
+        ->toThrow(InvalidArgumentException::class, 'already assigned');
+});
+
 it('reports parser failures as invalid usage', function (): void {
     $io = new BufferedIO;
     $application = Application::configure()
