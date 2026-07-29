@@ -25,6 +25,8 @@ use Infocyph\Console\Identity\ExecutionIdGenerator;
 use Infocyph\Console\Infrastructure\CapabilityLoader;
 use Infocyph\Console\IO\ConsoleIO;
 use Infocyph\Console\IO\IO;
+use Infocyph\Console\Omnibus\ConsumeCommand as OmnibusConsumeCommand;
+use Infocyph\Console\Omnibus\DispatchScheduledMessageCommand;
 use Infocyph\Console\Otp\CommandOtpAuthorizer;
 use Infocyph\Console\Otp\OtpVerifier;
 use Infocyph\Console\Process\ProcessRunner;
@@ -371,6 +373,21 @@ final class ApplicationBuilder
         $this->name = $name;
 
         return $this;
+    }
+
+    public function omnibus(): self
+    {
+        foreach ([OmnibusConsumeCommand::class, DispatchScheduledMessageCommand::class] as $command) {
+            if (!in_array($command, $this->commands, true)) {
+                $this->commands[] = $command;
+            }
+        }
+
+        return $this->commandGroup(
+            'Messaging',
+            OmnibusConsumeCommand::NAME,
+            DispatchScheduledMessageCommand::NAME,
+        );
     }
 
     public function otpVerifier(OtpVerifier $verifier): self

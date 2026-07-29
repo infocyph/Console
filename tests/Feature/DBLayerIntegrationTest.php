@@ -25,7 +25,7 @@ afterEach(function (): void {
     DB::purge();
 });
 
-test('DBLayer 2.2 provides Console database validation', function (): void {
+test('DBLayer 3.0 provides Console database validation', function (): void {
     $connection = consoleDBLayerConnection();
     $connection->statement('CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL, tenant TEXT NOT NULL)');
     $connection->statement(
@@ -45,7 +45,7 @@ test('DBLayer 2.2 provides Console database validation', function (): void {
         ]);
 });
 
-test('DBLayer 2.2 persists command history and schedule outcomes', function (): void {
+test('DBLayer 3.0 persists command history and schedule outcomes', function (): void {
     $connection = consoleDBLayerConnection();
     $connection->statement(
         'CREATE TABLE console_command_history (id TEXT, command TEXT, started_at INTEGER, exit_code INTEGER, metadata TEXT)',

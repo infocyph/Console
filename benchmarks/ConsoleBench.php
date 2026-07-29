@@ -23,6 +23,8 @@ final class ConsoleBench
 {
     private Application $external;
 
+    private Application $omnibus;
+
     private Application $standalone;
 
     private Application $typed;
@@ -49,6 +51,11 @@ final class ConsoleBench
             ->io(new BufferedIO())
             ->build();
 
+        $this->omnibus = Application::configure()
+            ->omnibus()
+            ->io(new BufferedIO())
+            ->build();
+
         $this->typed = Application::configure()
             ->commands([BenchmarkTypedCommand::class])
             ->io(new BufferedIO())
@@ -67,6 +74,20 @@ final class ConsoleBench
     public function benchExternalContainerDispatch(): void
     {
         $this->external->run(['console', '--quiet', 'benchmark:noop']);
+    }
+
+    public function benchOmnibusApplicationBuild(): void
+    {
+        Application::configure()
+            ->omnibus()
+            ->io(new BufferedIO())
+            ->build();
+    }
+
+    #[Bench\BeforeMethods('setUp')]
+    public function benchOmnibusPreflightVersion(): void
+    {
+        $this->omnibus->run(['console', '--quiet', '--version']);
     }
 
     #[Bench\BeforeMethods('setUp')]

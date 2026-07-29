@@ -13,9 +13,11 @@ it('keeps optional adapters out of production requirements', function (): void {
         'php',
         'infocyph/arraykit',
         'infocyph/intermix',
+        'infocyph/omnibus',
         'infocyph/uid',
-    ])->and($composer['require-dev']['infocyph/cachelayer'] ?? null)->toBe('^2.0')
-        ->and($composer['require-dev']['infocyph/dblayer'] ?? null)->toBe('^2.3')
+    ])->and($composer['require']['infocyph/omnibus'] ?? null)->toBe('dev-main@dev')
+        ->and($composer['require-dev']['infocyph/cachelayer'] ?? null)->toBe('^2.0')
+        ->and($composer['require-dev']['infocyph/dblayer'] ?? null)->toBe('^3.0')
         ->and(array_keys($composer['suggest']))->toContain(
         'infocyph/cachelayer',
         'infocyph/dblayer',

@@ -8,13 +8,20 @@ A fast, typed foundation for building modern PHP command-line applications.
 composer require infocyph/console
 ```
 
-The core installs ArrayKit and InterMix. Capability adapters remain optional:
-install the package used by the selected command, such as
-`infocyph/reqshield` for validation or `infocyph/dblayer` for DBLayer
-persistence. UID is part of the core command-execution lifecycle, but its
-generator remains lazy until a command declares the identity capability.
-Unselected adapters are not initialized or required by preflight and ordinary
+The core installs ArrayKit, InterMix, Omnibus, and UID. Omnibus supplies the
+message-consumer and scheduled-message contracts that Console supervises, but
+its commands and runtime graph remain explicitly enabled. Other capability
+adapters remain optional: install the package used by the selected command,
+such as `infocyph/reqshield` for validation or `infocyph/dblayer` for DBLayer
+persistence. Unselected adapters are not initialized by preflight or ordinary
 command paths.
+
+## Documentation
+
+The complete guide starts at [`docs/README.md`](docs/README.md), including
+command scopes, capability loading, compiled manifests, process controls,
+scheduler leases, worker supervision, shutdown behavior, testing, and
+framework/queue integration boundaries.
 
 ## Current status
 
@@ -47,6 +54,9 @@ Phases 1–9 and 11 of the architecture are implemented:
 - A queue-neutral dynamic worker supervisor with bounded incremental scaling,
   process and supervisor lifetimes, start limits, safe draining, opt-in
   signal-aware scale-down, and graceful/forced shutdown accounting.
+- Lazy Omnibus integration with bounded `queue:consume`, compiled
+  `schedule:dispatch-message`, queue-depth workload probing, and factory-key
+  schedule entries.
 - Compiled validation-manifest loading, shell completion generation, themed ANSI
   rendering, semantic components, prompt hints/filtering, fuzzy suggestions,
   verbosity-aware diagnostics, and CI performance guardrails.
@@ -201,6 +211,13 @@ Implement `WorkloadProbe::pending()` and run `WorkerSupervisor` with
 and scale step. One-shot workers drain by default. Set
 `scaleDownProcesses: true` only when child workers handle termination signals
 and can stop without abandoning an active job.
+
+For Omnibus, call `ApplicationBuilder::omnibus()`, bind the application's
+`ConsumerTask` and `ScheduledMessageDispatcher`, and use
+`ReceiverWorkloadProbe` with `WorkerSupervisor`. Registration loads only static
+command metadata; receivers, transports, serializers, handlers, and failure
+stores are resolved only when an Omnibus command actually runs. See
+[`docs/omnibus.md`](docs/omnibus.md).
 
 ## Framework integration
 

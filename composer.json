@@ -19,11 +19,12 @@
         "php": "^8.4",
         "infocyph/arraykit": "^4.6",
         "infocyph/intermix": "^7.3.1",
+        "infocyph/omnibus": "dev-main@dev",
         "infocyph/uid": "^4.3"
     },
     "require-dev": {
         "infocyph/cachelayer": "^2.0",
-        "infocyph/dblayer": "^2.3",
+        "infocyph/dblayer": "^3.0",
         "infocyph/epicrypt": "^1.1",
         "infocyph/otp": "^5.04",
         "infocyph/pathwise": "^2.5.3",
@@ -62,6 +63,7 @@
     },
     "scripts": {
         "benchmark": "@php benchmarks/run.php",
-        "test": "@php vendor/bin/pest --compact"
+        "soak:worker": "@php benchmarks/worker-soak.php",
+        "test": "@php vendor/bin/pest --configuration vendor/infocyph/phpforge/resources/pest.xml --bootstrap vendor/autoload.php tests --compact"
     }
 }
