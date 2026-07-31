@@ -16,7 +16,12 @@ final readonly class Task implements Renderable
         $symbol = match ($this->status) {
             'success' => '✔', 'failed' => '✘', 'running' => '…', default => '○',
         };
-        $role = $this->status === 'failed' ? 'error' : ($this->status === 'success' ? 'success' : 'text');
+        $role = match ($this->status) {
+            'failed' => 'error',
+            'success' => 'success',
+            'running' => 'progress',
+            default => 'muted',
+        };
 
         return Frame::line(TextWidth::truncate($symbol . ' ' . $this->label, $width), $role);
     }

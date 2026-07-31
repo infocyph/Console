@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Infocyph\Console\Terminal\SignalManager;
 use Infocyph\Console\Testing\SubprocessRunner;
 use Infocyph\Console\Worker\WorkerOptions;
+use Infocyph\Console\Worker\WorkerStopReason;
 use Infocyph\Console\Worker\WorkerSupervisor;
 use Infocyph\Console\Worker\WorkloadProbe;
 
@@ -84,6 +85,7 @@ it('accounts for successful and failed child processes exactly once', function (
             ->and($summary->failed)->toBe(1)
             ->and($summary->forced)->toBe(0)
             ->and($summary->interrupted)->toBeFalse()
+            ->and($summary->stopReason)->toBe(WorkerStopReason::START_LIMIT)
             ->and($summary->successful())->toBeFalse()
             ->and(recordedWorkerEvents($files['events']))->toMatchArray([
                 'started' => 2,
@@ -123,6 +125,7 @@ it('stops all children when a worker heartbeat loses its lease', function (): vo
             ->and($summary->failed)->toBe(0)
             ->and($summary->forced)->toBe(0)
             ->and($summary->interrupted)->toBeTrue()
+            ->and($summary->stopReason)->toBe(WorkerStopReason::HEARTBEAT_LOST)
             ->and(recordedWorkerEvents($files['events'])['terminated'] ?? 0)->toBe(1);
     } finally {
         clearWorkerFixtureFiles($files);
@@ -166,6 +169,7 @@ it('drains children after a supervisor interrupt', function (): void {
             ->and($summary->failed)->toBe(0)
             ->and($summary->forced)->toBe(0)
             ->and($summary->interrupted)->toBeTrue()
+            ->and($summary->stopReason)->toBe(WorkerStopReason::INTERRUPTED)
             ->and(recordedWorkerEvents($files['events'])['terminated'] ?? 0)->toBe(1);
     } finally {
         clearWorkerFixtureFiles($files);
@@ -218,6 +222,7 @@ it('scales down ready children and stops when the workload is empty', function (
             ->and($summary->failed)->toBe(0)
             ->and($summary->forced)->toBe(0)
             ->and($summary->interrupted)->toBeFalse()
+            ->and($summary->stopReason)->toBe(WorkerStopReason::EMPTY)
             ->and($summary->successful())->toBeTrue()
             ->and(recordedWorkerEvents($files['events'])['terminated'] ?? 0)->toBe(3);
     } finally {
@@ -261,7 +266,78 @@ it('escalates scale-down to a forced stop after the grace period', function (): 
             ->and($summary->failed)->toBe(1)
             ->and($summary->forced)->toBe(1)
             ->and($summary->interrupted)->toBeFalse()
+            ->and($summary->stopReason)->toBe(WorkerStopReason::EMPTY)
             ->and($summary->successful())->toBeFalse();
+    } finally {
+        clearWorkerFixtureFiles($files);
+    }
+});
+
+it('backs off crash loops and stops after the configured consecutive failure limit', function (): void {
+    $files = workerFixtureFiles();
+
+    try {
+        $summary = (new WorkerSupervisor)->run(
+            workerFixtureCommand('failure', $files),
+            new class implements WorkloadProbe
+            {
+                public function pending(): int
+                {
+                    return 1;
+                }
+            },
+            new WorkerOptions(
+                maximumProcesses: 1,
+                failureBackoffSeconds: 0.0,
+                maximumConsecutiveFailures: 2,
+                pollIntervalSeconds: 0.01,
+                scaleCooldownSeconds: 0.0,
+            ),
+        );
+
+        expect($summary->started)->toBe(2)
+            ->and($summary->completed)->toBe(2)
+            ->and($summary->failed)->toBe(2)
+            ->and($summary->stopReason)->toBe(WorkerStopReason::FAILURE_LIMIT)
+            ->and($summary->successful())->toBeFalse();
+    } finally {
+        clearWorkerFixtureFiles($files);
+    }
+});
+
+it('drains active children before propagating a workload probe failure', function (): void {
+    if (!function_exists('pcntl_signal')) {
+        $this->markTestSkipped('The deterministic cleanup fixture requires pcntl.');
+    }
+
+    $files = workerFixtureFiles();
+    $probe = new class($files['events']) implements WorkloadProbe
+    {
+        public function __construct(private readonly string $events) {}
+
+        public function pending(): int
+        {
+            if ((recordedWorkerEvents($this->events)['started'] ?? 0) > 0) {
+                throw new RuntimeException('Probe unavailable.');
+            }
+
+            return 1;
+        }
+    };
+
+    try {
+        expect(fn() => (new WorkerSupervisor)->run(
+            workerFixtureCommand('graceful', $files),
+            $probe,
+            new WorkerOptions(
+                minimumProcesses: 1,
+                pollIntervalSeconds: 0.01,
+                scaleCooldownSeconds: 0.0,
+                terminationGraceSeconds: 0.2,
+            ),
+        ))->toThrow(RuntimeException::class, 'Probe unavailable.');
+
+        expect(recordedWorkerEvents($files['events'])['terminated'] ?? 0)->toBe(1);
     } finally {
         clearWorkerFixtureFiles($files);
     }

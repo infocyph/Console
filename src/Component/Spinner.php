@@ -23,7 +23,10 @@ final class Spinner implements Renderable
 
     public function frame(int $width = 80): Frame
     {
-        return Frame::line(TextWidth::truncate($this->frames[$this->position] . ' ' . $this->label, $width));
+        return Frame::line(
+            TextWidth::truncate($this->frames[$this->position] . ' ' . $this->label, $width),
+            'progress',
+        );
     }
 
     public function tick(): self

@@ -13,6 +13,8 @@ final readonly class WorkerOptions
         public int $jobsPerProcess = 1,
         public int $scaleStep = 1,
         public bool $scaleDownProcesses = false,
+        public float $failureBackoffSeconds = 1.0,
+        public ?int $maximumConsecutiveFailures = 10,
         public float $pollIntervalSeconds = 1.0,
         public float $scaleCooldownSeconds = 1.0,
         public ?float $processMaxSeconds = null,
@@ -23,15 +25,43 @@ final readonly class WorkerOptions
         public ?string $workingDirectory = null,
         public array $environment = [],
     ) {
-        if ($minimumProcesses < 0 || $maximumProcesses < 1 || $minimumProcesses > $maximumProcesses) {
-            throw new \InvalidArgumentException('Worker process bounds are invalid.');
-        }
+        self::validateProcessBounds($minimumProcesses, $maximumProcesses);
+        self::validateCapacity($jobsPerProcess, $scaleStep);
+        self::validateFailurePolicy($failureBackoffSeconds, $maximumConsecutiveFailures);
+        self::validatePolling($pollIntervalSeconds, $scaleCooldownSeconds);
+        self::validateLimits(
+            $processMaxSeconds,
+            $supervisorMaxSeconds,
+            $maximumProcessesStarted,
+            $terminationGraceSeconds,
+        );
+    }
+
+    private static function validateCapacity(int $jobsPerProcess, int $scaleStep): void
+    {
         if ($jobsPerProcess < 1 || $scaleStep < 1) {
             throw new \InvalidArgumentException('Worker job capacity and scale step must be positive.');
         }
-        if ($pollIntervalSeconds <= 0 || $scaleCooldownSeconds < 0) {
-            throw new \InvalidArgumentException('Worker polling must be positive and cooldown cannot be negative.');
+    }
+
+    private static function validateFailurePolicy(
+        float $failureBackoffSeconds,
+        ?int $maximumConsecutiveFailures,
+    ): void {
+        if ($failureBackoffSeconds < 0) {
+            throw new \InvalidArgumentException('Worker failure backoff cannot be negative.');
         }
+        if ($maximumConsecutiveFailures !== null && $maximumConsecutiveFailures < 1) {
+            throw new \InvalidArgumentException('Worker consecutive failure limit must be positive.');
+        }
+    }
+
+    private static function validateLimits(
+        ?float $processMaxSeconds,
+        ?float $supervisorMaxSeconds,
+        ?int $maximumProcessesStarted,
+        float $terminationGraceSeconds,
+    ): void {
         if ($processMaxSeconds !== null && $processMaxSeconds <= 0) {
             throw new \InvalidArgumentException('Worker process lifetime must be positive.');
         }
@@ -43,6 +73,20 @@ final readonly class WorkerOptions
         }
         if ($terminationGraceSeconds < 0) {
             throw new \InvalidArgumentException('Worker termination grace cannot be negative.');
+        }
+    }
+
+    private static function validatePolling(float $pollIntervalSeconds, float $scaleCooldownSeconds): void
+    {
+        if ($pollIntervalSeconds <= 0 || $scaleCooldownSeconds < 0) {
+            throw new \InvalidArgumentException('Worker polling must be positive and cooldown cannot be negative.');
+        }
+    }
+
+    private static function validateProcessBounds(int $minimumProcesses, int $maximumProcesses): void
+    {
+        if ($minimumProcesses < 0 || $maximumProcesses < 1 || $minimumProcesses > $maximumProcesses) {
+            throw new \InvalidArgumentException('Worker process bounds are invalid.');
         }
     }
 }

@@ -237,9 +237,11 @@ final class ArgvParser
      */
     private function parseLongOption(string $token, array $tokens, int &$index, array $options, array &$seen, array &$values): void
     {
-        [$name, $inlineValue] = array_pad(explode('=', substr($token, 2), 2), 2, null);
-        $negated = str_starts_with((string) $name, 'no-');
-        $optionName = $negated ? substr((string) $name, 3) : $name;
+        $segments = explode('=', substr($token, 2), 2);
+        $name = $segments[0];
+        $inlineValue = $segments[1] ?? null;
+        $negated = str_starts_with($name, 'no-');
+        $optionName = $negated ? substr($name, 3) : $name;
         $option = $options[$optionName] ?? null;
 
         if ($option === null) {

@@ -32,6 +32,7 @@ use Infocyph\Console\Render\PlainRenderer;
 use Infocyph\Console\Render\Renderer;
 use Infocyph\Console\Style\Theme;
 use Infocyph\Console\Terminal\CapabilityDetector;
+use Infocyph\Console\Terminal\ColorDepth;
 use Infocyph\Console\Terminal\Terminal;
 use Infocyph\Console\Terminal\TerminalCapabilities;
 
@@ -275,7 +276,15 @@ final class ConsoleIO implements IO
             return new JsonRenderer();
         }
 
-        return ($this->ansiOverride ?? $this->capabilities->ansi) ? new AnsiRenderer($this->theme) : new PlainRenderer();
+        if (!($this->ansiOverride ?? $this->capabilities->ansi)) {
+            return new PlainRenderer();
+        }
+
+        $depth = $this->capabilities->colorDepth === ColorDepth::NONE
+            ? ColorDepth::BASIC
+            : $this->capabilities->colorDepth;
+
+        return new AnsiRenderer($this->theme, $depth);
     }
 
     private function width(): int

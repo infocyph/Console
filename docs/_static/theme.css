@@ -1,0 +1,30 @@
+:root {
+  --console-cyan: #22d3ee;
+  --console-blue: #60a5fa;
+  --console-green: #4ade80;
+  --console-magenta: #d8b4fe;
+}
+
+.bd-header-announcement {
+  background: linear-gradient(90deg, #0f172a, #164e63);
+}
+
+.highlight-php .k,
+.highlight-php .kd,
+.highlight-php .kn {
+  color: var(--console-blue);
+}
+
+.highlight-php .nc,
+.highlight-php .nf {
+  color: var(--console-cyan);
+}
+
+.highlight-php .s1,
+.highlight-php .s2 {
+  color: var(--console-green);
+}
+
+.sd-card {
+  border-top: 3px solid var(--console-cyan);
+}

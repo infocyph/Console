@@ -17,6 +17,9 @@ final readonly class DefinitionList implements Renderable
     {
         $labelWidth = max(0, ...array_map(strlen(...), array_keys($this->items)));
 
-        return new Frame(array_map(static fn(mixed $value, string $key): Line => new Line(TextWidth::truncate(str_pad($key, $labelWidth) . ': ' . $value, $width)), $this->items, array_keys($this->items)));
+        return new Frame(array_map(static fn(mixed $value, string $key): Line => new Line(
+            TextWidth::truncate(str_pad($key, $labelWidth) . ': ' . $value, $width),
+            'definition',
+        ), $this->items, array_keys($this->items)));
     }
 }

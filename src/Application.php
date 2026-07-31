@@ -332,17 +332,20 @@ final readonly class Application
 
     private function renderApplicationHelp(IO $io): void
     {
-        $io->text(sprintf('Usage: %s <command> [options]', $this->metadata->name()));
+        $io->title($this->metadata->name());
+        $io->paragraph(sprintf('Usage: %s <command> [options]', $this->metadata->name()), 'accent');
         $io->text('');
         $this->renderCommandList($io);
         $io->text('');
-        $io->text('Global options:');
-        $io->text('  -h, --help       Display help for a command');
-        $io->text('  -V, --version    Display the application version');
-        $io->text('  -q, --quiet      Suppress normal output');
-        $io->text('  -v, -vv, -vvv    Increase diagnostic verbosity');
-        $io->text('  -n, --no-interaction  Disable interactive prompts');
-        $io->text('  completion [shell]    Generate bash, zsh, or fish completion');
+        $io->section('Global options:');
+        $io->definitions([
+            '  -h, --help' => 'Display help for a command',
+            '  -V, --version' => 'Display the application version',
+            '  -q, --quiet' => 'Suppress normal output',
+            '  -v, -vv, -vvv' => 'Increase diagnostic verbosity',
+            '  -n, --no-interaction' => 'Disable interactive prompts',
+            '  completion [shell]' => 'Generate bash, zsh, or fish completion',
+        ]);
     }
 
     private function renderArgumentHelp(CommandDescriptor $command, IO $io): void
@@ -352,15 +355,17 @@ final readonly class Application
         }
 
         $io->text('');
-        $io->text('Arguments:');
+        $io->section('Arguments:');
+        $arguments = [];
         foreach ($command->arguments() as $argument) {
-            $io->text(sprintf('  %-24s %s', $argument->name(), $argument->descriptionText()));
+            $arguments['  ' . $argument->name()] = $argument->descriptionText();
         }
+        $io->definitions($arguments);
     }
 
     private function renderCommandHelp(CommandDescriptor $command, IO $io): void
     {
-        $io->text('Usage: ' . $this->commandUsage($command));
+        $io->paragraph('Usage: ' . $this->commandUsage($command), 'accent');
         if ($command->description() !== '') {
             $io->text('');
             $io->text($command->description());
@@ -372,7 +377,7 @@ final readonly class Application
 
     private function renderCommandList(IO $io): void
     {
-        $io->text('Available commands:');
+        $io->section('Available commands:');
 
         $groups = [];
         foreach ($this->registry->visible() as $command) {
@@ -381,10 +386,12 @@ final readonly class Application
 
         foreach ($groups as $group => $commands) {
             $io->text('');
-            $io->text($group . ':');
+            $io->section($group . ':');
+            $definitions = [];
             foreach ($commands as $command) {
-                $io->text(sprintf('  %-24s %s', $command->name(), $command->description()));
+                $definitions['  ' . $command->name()] = $command->description();
             }
+            $io->definitions($definitions);
         }
     }
 
@@ -409,13 +416,15 @@ final readonly class Application
         }
 
         $io->text('');
-        $io->text('Options:');
+        $io->section('Options:');
+        $options = [];
         foreach ($command->options() as $option) {
             $names = '--' . $option->name();
             $names = $option->shortName() === null ? $names : '-' . $option->shortName() . ', ' . $names;
             $names .= $option->acceptsValue() ? '=VALUE' : '';
-            $io->text(sprintf('  %-24s %s', $names, $option->descriptionText()));
+            $options['  ' . $names] = $option->descriptionText();
         }
+        $io->definitions($options);
     }
 
     private function renderRequestedHelp(?string $requested, IO $io): int

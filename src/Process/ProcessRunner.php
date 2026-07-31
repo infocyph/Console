@@ -13,9 +13,13 @@ final class ProcessRunner
 
     public function __construct(?SignalManager $signals = null)
     {
-        $signals?->onInterrupt(function (): void {
+        if ($signals === null) {
+            return;
+        }
+        $signals->onInterrupt(function (): void {
             $this->interrupted = true;
         });
+        $signals->register();
     }
 
     /** @param list<string> $command */
@@ -42,9 +46,22 @@ final class ProcessRunner
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
 
-        return $this->monitor($process, $pipes, $options);
+        try {
+            return $this->monitor($process, $pipes, $options);
+        } catch (\Throwable $exception) {
+            $this->terminate($process, $options->terminationGraceSeconds);
+            foreach ($pipes as $pipe) {
+                if (is_resource($pipe)) {
+                    fclose($pipe);
+                }
+            }
+            proc_close($process);
+
+            throw $exception;
+        }
     }
 
+    /** @phpstan-impure */
     private function cancelled(ProcessOptions $options): bool
     {
         return $options->cancelled !== null && (bool) ($options->cancelled)();
@@ -96,6 +113,7 @@ final class ProcessRunner
         }
     }
 
+    /** @phpstan-impure */
     private function heartbeatFailed(ProcessOptions $options): bool
     {
         return $options->heartbeat !== null && !(bool) ($options->heartbeat)();
@@ -110,15 +128,24 @@ final class ProcessRunner
             return new ProcessResult(ExitCode::CANNOT_EXECUTE, '', 'Process could not be started.');
         }
         $started = microtime(true);
-        while (($status = proc_get_status($process))['running']) {
-            $timedOut = $options->timeoutSeconds !== null && microtime(true) - $started >= $options->timeoutSeconds;
-            if ($this->cancelled($options) || $this->interrupted || $timedOut || $this->heartbeatFailed($options)) {
-                $this->terminate($process, $options->terminationGraceSeconds);
-                proc_close($process);
+        $this->interrupted = false;
 
-                return new ProcessResult(ExitCode::INTERRUPTED, '', '', $timedOut);
+        try {
+            while (($status = proc_get_status($process))['running']) {
+                $timedOut = $options->timeoutSeconds !== null && microtime(true) - $started >= $options->timeoutSeconds;
+                if ($this->cancelled($options) || $this->interrupted || $timedOut || $this->heartbeatFailed($options)) {
+                    $this->terminate($process, $options->terminationGraceSeconds);
+                    proc_close($process);
+
+                    return new ProcessResult(ExitCode::INTERRUPTED, '', '', $timedOut);
+                }
+                usleep(10_000);
             }
-            usleep(10_000);
+        } catch (\Throwable $exception) {
+            $this->terminate($process, $options->terminationGraceSeconds);
+            proc_close($process);
+
+            throw $exception;
         }
 
         return new ProcessResult(proc_close($process), '', '');
@@ -162,6 +189,9 @@ final class ProcessRunner
 
                 $activity = $this->readAvailable($pipes, $redactor, $options, $output, $errors);
                 if ($activity === null) {
+                    $termination = 'io-error';
+                    $this->terminate($process, $options->terminationGraceSeconds);
+
                     break;
                 }
                 if ($activity) {
