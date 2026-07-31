@@ -41,7 +41,10 @@ final class ProgressBar implements Renderable
         $barWidth = max(10, min(40, $width - 25));
         $filled = (int) round($barWidth * $this->current / $this->total);
 
-        return Frame::line(sprintf('%s [%s%s] %d%%', $this->label, str_repeat('=', $filled), str_repeat(' ', $barWidth - $filled), (int) round($this->current / $this->total * 100)));
+        return Frame::line(
+            sprintf('%s [%s%s] %d%%', $this->label, str_repeat('=', $filled), str_repeat(' ', $barWidth - $filled), (int) round($this->current / $this->total * 100)),
+            'progress',
+        );
     }
 
     public function set(int $current): self

@@ -18,4 +18,5 @@ var
 vendor
 .codex
 /.cache
+/build
 /coverage

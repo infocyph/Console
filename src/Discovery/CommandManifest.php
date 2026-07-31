@@ -23,10 +23,13 @@ final class CommandManifest
     {
         $manifest = self::load($path);
 
-        if (($manifest['version'] ?? null) === 2) {
-            return CommandRegistry::fromIndexedManifest($manifest, dirname($path));
+        if (($manifest['version'] ?? null) !== 2) {
+            throw new \UnexpectedValueException(sprintf(
+                'Command manifest "%s" must use format version 2.',
+                $path,
+            ));
         }
 
-        return CommandRegistry::fromManifest($manifest);
+        return CommandRegistry::fromIndexedManifest($manifest, dirname($path));
     }
 }

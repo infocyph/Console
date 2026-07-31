@@ -17,20 +17,20 @@
     ],
     "require": {
         "php": "^8.4",
-        "infocyph/arraykit": "^4.6",
-        "infocyph/intermix": "^7.3.1",
-        "infocyph/omnibus": "dev-main@dev",
+        "infocyph/arraykit": "^4.6.1",
+        "infocyph/intermix": "^7.3.2",
+        "infocyph/omnibus": "^1.0.0",
         "infocyph/uid": "^4.3"
     },
     "require-dev": {
         "infocyph/cachelayer": "^2.0",
-        "infocyph/dblayer": "^3.0",
-        "infocyph/epicrypt": "^1.1",
+        "infocyph/dblayer": "^3.0.1",
+        "infocyph/epicrypt": "^1.1.1",
         "infocyph/otp": "^5.04",
         "infocyph/pathwise": "^2.5.3",
         "infocyph/phpforge": "dev-main@dev",
-        "infocyph/reqshield": "^2.4.2",
-        "infocyph/talkingbytes": "^0.2"
+        "infocyph/reqshield": "^2.4.3",
+        "infocyph/talkingbytes": "^1.0.0"
     },
     "suggest": {
         "infocyph/cachelayer": "Required by CacheLayer command state and mutex adapters.",
@@ -63,7 +63,6 @@
     },
     "scripts": {
         "benchmark": "@php benchmarks/run.php",
-        "soak:worker": "@php benchmarks/worker-soak.php",
-        "test": "@php vendor/bin/pest --configuration vendor/infocyph/phpforge/resources/pest.xml --bootstrap vendor/autoload.php tests --compact"
+        "soak:worker": "@php benchmarks/worker-soak.php"
     }
 }

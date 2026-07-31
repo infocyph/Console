@@ -6,6 +6,7 @@ namespace Infocyph\Console\Discovery;
 
 use Infocyph\Console\Command\CommandContract;
 use Infocyph\Console\Command\CommandDescriptor;
+use Infocyph\Console\Support\PhpManifestWriter;
 
 final class CommandManifestCompiler
 {
@@ -41,9 +42,10 @@ final class CommandManifestCompiler
         $currentEntries = [];
         foreach ($descriptors as $name => $descriptor) {
             $filename = $entryPrefix . hash('sha256', (string) $name) . '.php';
-            $this->publish(
+            PhpManifestWriter::write(
+                $descriptor,
                 $directory . DIRECTORY_SEPARATOR . $filename,
-                "<?php\n\ndeclare(strict_types=1);\n\nreturn " . var_export($descriptor, true) . ";\n",
+                'command descriptor',
             );
             $currentEntries[$filename] = true;
             $index[$name] = [
@@ -53,14 +55,12 @@ final class CommandManifestCompiler
             ];
         }
 
-        $this->publish(
+        PhpManifestWriter::write(
+            ['version' => 2, 'commands' => $index],
             $path,
-            "<?php\n\ndeclare(strict_types=1);\n\nreturn "
-            . var_export(['version' => 2, 'commands' => $index], true)
-            . ";\n",
+            'command manifest',
         );
         $this->pruneEntries($directory, $entryPrefix, $currentEntries);
-        $this->removeLegacyDirectory($path . '.d');
     }
 
     /**
@@ -92,38 +92,6 @@ final class CommandManifestCompiler
             if (!isset($current[basename($entry)]) && !unlink($entry)) {
                 throw new \RuntimeException(sprintf('Unable to remove stale command manifest entry "%s".', $entry));
             }
-        }
-    }
-
-    private function publish(string $path, string $contents): void
-    {
-        $temporary = $path . '.' . bin2hex(random_bytes(6)) . '.tmp';
-        if (file_put_contents($temporary, $contents, LOCK_EX) === false) {
-            throw new \RuntimeException(sprintf('Unable to write temporary command manifest "%s".', $temporary));
-        }
-        if (rename($temporary, $path)) {
-            return;
-        }
-        if (is_file($temporary)) {
-            unlink($temporary);
-        }
-
-        throw new \RuntimeException(sprintf('Unable to publish command manifest "%s".', $path));
-    }
-
-    private function removeLegacyDirectory(string $directory): void
-    {
-        if (!is_dir($directory)) {
-            return;
-        }
-
-        foreach (glob($directory . DIRECTORY_SEPARATOR . '*.php') ?: [] as $entry) {
-            if (!unlink($entry)) {
-                throw new \RuntimeException(sprintf('Unable to remove legacy command manifest entry "%s".', $entry));
-            }
-        }
-        if (!rmdir($directory)) {
-            throw new \RuntimeException(sprintf('Unable to remove legacy command manifest directory "%s".', $directory));
         }
     }
 }

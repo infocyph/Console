@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Infocyph\Console\Scheduling;
 
+use Infocyph\Console\Support\PhpManifestWriter;
+
 /** @internal */
 final class ScheduleManifestCompiler
 {
@@ -15,18 +17,6 @@ final class ScheduleManifestCompiler
 
     public function write(Schedule $schedule, string $path): void
     {
-        $directory = dirname($path);
-        if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
-            throw new \RuntimeException(sprintf('Unable to create schedule manifest directory "%s".', $directory));
-        }
-        $temporary = $path . '.' . bin2hex(random_bytes(6)) . '.tmp';
-        file_put_contents($temporary, "<?php\n\ndeclare(strict_types=1);\n\nreturn " . var_export($this->compile($schedule), true) . ";\n", LOCK_EX);
-        if (!rename($temporary, $path)) {
-            if (is_file($temporary)) {
-                unlink($temporary);
-            }
-
-            throw new \RuntimeException(sprintf('Unable to publish schedule manifest "%s".', $path));
-        }
+        PhpManifestWriter::write($this->compile($schedule), $path, 'schedule manifest');
     }
 }

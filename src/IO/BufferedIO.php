@@ -77,7 +77,11 @@ final class BufferedIO implements IO
 
     public function frame(Frame $frame): void
     {
-        foreach (explode(PHP_EOL, rtrim(new PlainRenderer()->render($frame))) as $line) {
+        $rendered = rtrim(new PlainRenderer()->render($frame), "\r\n");
+        if ($rendered === '') {
+            return;
+        }
+        foreach (explode(PHP_EOL, $rendered) as $line) {
             $this->output[] = $line;
         }
     }

@@ -35,35 +35,31 @@ final class WorkerSupervisor
         $options ??= new WorkerOptions();
         $startedAt = microtime(true);
         $nextScaleAt = $startedAt;
-        $started = $completed = $failed = $forced = 0;
+        $nextStartAt = $startedAt;
+        $started = $completed = $failed = $forced = $consecutiveFailures = 0;
         $processes = [];
         $this->interrupted = false;
 
-        while (true) {
-            $now = microtime(true);
-            $this->reap($processes, $completed, $failed);
-            $forced += $this->enforceLimits($processes, $options, $now, $startedAt);
-            $pending = max(0, $workload->pending());
-            if ($heartbeat !== null && !$heartbeat()) {
-                $this->interrupted = true;
-            }
+        try {
+            $stopReason = $this->supervise(
+                $processes,
+                $command,
+                $workload,
+                $options,
+                $heartbeat,
+                $startedAt,
+                $nextScaleAt,
+                $nextStartAt,
+                $started,
+                $completed,
+                $failed,
+                $forced,
+                $consecutiveFailures,
+            );
+        } catch (\Throwable $exception) {
+            $this->drainAfterFailure($processes, $options);
 
-            if ($this->shouldStop($options, $startedAt, $now)) {
-                $this->stopAll($processes, $now);
-            } elseif ($now >= $nextScaleAt) {
-                $desired = $this->desiredProcesses($pending, $options);
-                $started += $this->scaleUp($processes, $command, $options, $desired, $started);
-                if ($options->scaleDownProcesses) {
-                    $this->scaleDown($processes, $desired, $now);
-                }
-                $nextScaleAt = $now + $options->scaleCooldownSeconds;
-            }
-
-            if ($processes === [] && $this->finished($options, $pending, $started, $startedAt, $now)) {
-                break;
-            }
-
-            usleep((int) min(1_000_000, max(10_000, $options->pollIntervalSeconds * 1_000_000)));
+            throw $exception;
         }
 
         return new WorkerRunSummary(
@@ -73,7 +69,43 @@ final class WorkerSupervisor
             $forced,
             $this->interrupted,
             microtime(true) - $startedAt,
+            $stopReason,
         );
+    }
+
+    /**
+     * @param array<int, WorkerProcess> $processes
+     * @param list<string> $command
+     */
+    private function applyScaleDecision(
+        array &$processes,
+        array $command,
+        WorkerOptions $options,
+        ?WorkerStopReason $stopReason,
+        int $pending,
+        float $now,
+        float $nextScaleAt,
+        float $nextStartAt,
+        int &$started,
+    ): float {
+        if ($stopReason !== null) {
+            $this->stopAll($processes, $now);
+
+            return $nextScaleAt;
+        }
+        if ($now < $nextScaleAt) {
+            return $nextScaleAt;
+        }
+
+        $desired = $this->desiredProcesses($pending, $options);
+        if ($now >= $nextStartAt) {
+            $started += $this->scaleUp($processes, $command, $options, $desired, $started);
+        }
+        if ($options->scaleDownProcesses) {
+            $this->scaleDown($processes, $desired, $now);
+        }
+
+        return $now + $options->scaleCooldownSeconds;
     }
 
     private function desiredProcesses(int $pending, WorkerOptions $options): int
@@ -81,6 +113,28 @@ final class WorkerSupervisor
         $needed = (int) ceil($pending / $options->jobsPerProcess);
 
         return min($options->maximumProcesses, max($options->minimumProcesses, $needed));
+    }
+
+    /** @param array<int, WorkerProcess> $processes */
+    private function drainAfterFailure(array &$processes, WorkerOptions $options): void
+    {
+        $startedAt = microtime(true);
+        $deadline = $startedAt + $options->terminationGraceSeconds + 1.0;
+        $completed = $failed = 0;
+        while ($processes !== []) {
+            $now = microtime(true);
+            $this->stopAll($processes, $startedAt);
+            foreach ($processes as $process) {
+                if ($process->shouldForce($now, $options->terminationGraceSeconds) || $now >= $deadline) {
+                    $process->force();
+                }
+            }
+            $this->reap($processes, $completed, $failed);
+            if ($processes === [] || $now >= $deadline) {
+                break;
+            }
+            usleep($this->pollMicroseconds($options));
+        }
     }
 
     /** @param array<int, WorkerProcess> $processes */
@@ -108,17 +162,73 @@ final class WorkerSupervisor
         return $forced;
     }
 
-    private function finished(
+    /** @param array<int, WorkerProcess> $processes */
+    private function finishedReason(
+        array $processes,
         WorkerOptions $options,
-        int $pending,
+        ?WorkerStopReason $stopReason,
         int $started,
+    ): ?WorkerStopReason {
+        if ($processes !== []) {
+            return null;
+        }
+        if ($stopReason !== null) {
+            return $stopReason;
+        }
+        if ($options->maximumProcessesStarted !== null && $started >= $options->maximumProcessesStarted) {
+            return WorkerStopReason::START_LIMIT;
+        }
+
+        return null;
+    }
+
+    private function limitReason(
+        WorkerOptions $options,
         float $startedAt,
         float $now,
-    ): bool {
-        return $this->interrupted
-            || ($options->stopWhenEmpty && $pending === 0)
-            || ($options->maximumProcessesStarted !== null && $started >= $options->maximumProcessesStarted)
-            || ($options->supervisorMaxSeconds !== null && $now - $startedAt >= $options->supervisorMaxSeconds);
+    ): ?WorkerStopReason {
+        if ($this->interrupted) {
+            return WorkerStopReason::INTERRUPTED;
+        }
+        if ($options->supervisorMaxSeconds !== null && $now - $startedAt >= $options->supervisorMaxSeconds) {
+            return WorkerStopReason::SUPERVISOR_LIMIT;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, WorkerProcess> $processes
+     * @param-out array<int, WorkerProcess> $processes
+     */
+    private function observeProcesses(
+        array &$processes,
+        WorkerOptions $options,
+        float $now,
+        float &$nextStartAt,
+        int &$completed,
+        int &$failed,
+        int &$consecutiveFailures,
+    ): void {
+        $completedBefore = $completed;
+        $failedBefore = $failed;
+        $this->reap($processes, $completed, $failed);
+        $completedDelta = $completed - $completedBefore;
+        $failedDelta = $failed - $failedBefore;
+        if ($failedDelta > 0) {
+            $consecutiveFailures += $failedDelta;
+            $nextStartAt = max($nextStartAt, $now + $options->failureBackoffSeconds);
+
+            return;
+        }
+        if ($completedDelta > 0) {
+            $consecutiveFailures = 0;
+        }
+    }
+
+    private function pollMicroseconds(WorkerOptions $options): int
+    {
+        return (int) min(1_000_000, max(10_000, $options->pollIntervalSeconds * 1_000_000));
     }
 
     /**
@@ -178,15 +288,6 @@ final class WorkerSupervisor
         return $count;
     }
 
-    private function shouldStop(
-        WorkerOptions $options,
-        float $startedAt,
-        float $now,
-    ): bool {
-        return $this->interrupted
-            || ($options->supervisorMaxSeconds !== null && $now - $startedAt >= $options->supervisorMaxSeconds);
-    }
-
     /** @param list<string> $command */
     private function start(array $command, WorkerOptions $options): WorkerProcess
     {
@@ -212,6 +313,111 @@ final class WorkerSupervisor
     {
         foreach ($processes as $process) {
             $process->stop($now);
+        }
+    }
+
+    /**
+     * @param array<int, WorkerProcess> $processes
+     * @return array{?WorkerStopReason, int}
+     */
+    private function stopDecision(
+        array $processes,
+        WorkloadProbe $workload,
+        WorkerOptions $options,
+        ?callable $heartbeat,
+        float $startedAt,
+        float $now,
+        int $consecutiveFailures,
+        ?WorkerStopReason $previousReason,
+    ): array {
+        if ($previousReason !== null) {
+            return [$previousReason, 0];
+        }
+
+        $reason = $this->limitReason($options, $startedAt, $now);
+        if ($reason !== null) {
+            return [$reason, 0];
+        }
+        if ($heartbeat !== null && !$heartbeat()) {
+            $this->interrupted = true;
+
+            return [WorkerStopReason::HEARTBEAT_LOST, 0];
+        }
+
+        $pending = max(0, $workload->pending());
+        if (
+            $options->maximumConsecutiveFailures !== null
+            && $consecutiveFailures >= $options->maximumConsecutiveFailures
+        ) {
+            return [WorkerStopReason::FAILURE_LIMIT, $pending];
+        }
+        if ($options->stopWhenEmpty && $pending === 0 && $processes === []) {
+            return [WorkerStopReason::EMPTY, 0];
+        }
+
+        return [null, $pending];
+    }
+
+    /**
+     * @param array<int, WorkerProcess> $processes
+     * @param-out array<int, WorkerProcess> $processes
+     * @param list<string> $command
+     */
+    private function supervise(
+        array &$processes,
+        array $command,
+        WorkloadProbe $workload,
+        WorkerOptions $options,
+        ?callable $heartbeat,
+        float $startedAt,
+        float &$nextScaleAt,
+        float &$nextStartAt,
+        int &$started,
+        int &$completed,
+        int &$failed,
+        int &$forced,
+        int &$consecutiveFailures,
+    ): WorkerStopReason {
+        $stopReason = null;
+        while (true) {
+            $now = microtime(true);
+            $this->observeProcesses(
+                $processes,
+                $options,
+                $now,
+                $nextStartAt,
+                $completed,
+                $failed,
+                $consecutiveFailures,
+            );
+            $forced += $this->enforceLimits($processes, $options, $now, $startedAt);
+            [$stopReason, $pending] = $this->stopDecision(
+                $processes,
+                $workload,
+                $options,
+                $heartbeat,
+                $startedAt,
+                $now,
+                $consecutiveFailures,
+                $stopReason,
+            );
+            $nextScaleAt = $this->applyScaleDecision(
+                $processes,
+                $command,
+                $options,
+                $stopReason,
+                $pending,
+                $now,
+                $nextScaleAt,
+                $nextStartAt,
+                $started,
+            );
+            $finished = $this->finishedReason($processes, $options, $stopReason, $started);
+            if ($finished !== null) {
+                return $finished;
+            }
+
+            usleep($this->pollMicroseconds($options));
         }
     }
 }

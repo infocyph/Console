@@ -13,6 +13,7 @@ final readonly class WorkerRunSummary
         public int $forced,
         public bool $interrupted,
         public float $durationSeconds,
+        public WorkerStopReason $stopReason,
     ) {}
 
     public function successful(): bool

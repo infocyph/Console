@@ -18,6 +18,7 @@ use Infocyph\Console\Component\Paragraph;
 use Infocyph\Console\Configuration\Configuration;
 use Infocyph\Console\Configuration\ConfigurationProvider;
 use Infocyph\Console\Container\ContainerProvider;
+use Infocyph\Console\Discovery\CommandManifest;
 use Infocyph\Console\Discovery\CommandManifestCompiler;
 use Infocyph\Console\Discovery\CompletionManifestCompiler;
 use Infocyph\Console\Discovery\ValidationManifestCompiler;
@@ -669,12 +670,36 @@ it('hardens global options, JSON errors, and unexpected failure output', functio
 it('keeps subprocess environments, validates workspace roots, and exposes safe terminal fallbacks', function (): void {
     $process = (new SubprocessRunner)->run([PHP_BINARY, '-r', 'echo getenv("PATH") === false ? "missing" : "present";'], ['CONSOLE_TEST_VALUE' => 'ok']);
     $capabilities = (new CapabilityDetector)->detect(fopen('php://temp', 'r'), fopen('php://temp', 'w'), ['LANG' => 'C', 'COLUMNS' => '120', 'LINES' => '40']);
+    $forcedColor = (new CapabilityDetector)->detect(
+        fopen('php://temp', 'r'),
+        fopen('php://temp', 'w'),
+        [
+            'COLORTERM' => false,
+            'FORCE_COLOR' => '1',
+            'NO_COLOR' => false,
+            'TERM' => 'xterm-256color',
+        ],
+    );
+    $disabledColor = (new CapabilityDetector)->detect(
+        fopen('php://temp', 'r'),
+        fopen('php://temp', 'w'),
+        [
+            'COLORTERM' => false,
+            'FORCE_COLOR' => '1',
+            'NO_COLOR' => '',
+            'TERM' => 'xterm-256color',
+        ],
+    );
     $signals = new SignalManager;
 
     expect($process->output)->toBe('present')
         ->and($capabilities->unicode)->toBeFalse()
         ->and($capabilities->width)->toBe(120)
         ->and($capabilities->height)->toBe(40)
+        ->and($forcedColor->ansi)->toBeTrue()
+        ->and($forcedColor->colorDepth)->toBe(ColorDepth::ANSI_256)
+        ->and($disabledColor->ansi)->toBeFalse()
+        ->and($disabledColor->colorDepth)->toBe(ColorDepth::NONE)
         ->and($signals->register())->toBeBool();
     expect(fn (): Workspace => new Workspace(''))->toThrow(InvalidArgumentException::class);
 });
@@ -875,4 +900,64 @@ it('renders custom themes, semantic components, prompt filtering, and actionable
         ->and($io->outputText())->toContain('Did you mean user:create?')
         ->and($application->run(['tool', 'user:create', 'a@b.c', '--ag=20']))->toBe(ExitCode::INVALID_USAGE)
         ->and($io->errorText())->toContain('Did you mean "--age"?');
+});
+
+it('renders basic, indexed, and true-color themes while plain output stays escape-free', function (): void {
+    $theme = new class implements Theme
+    {
+        public function style(string $role): Style
+        {
+            return $role === 'accent'
+                ? new Style(
+                    Color::BRIGHT_CYAN,
+                    bold: true,
+                    background: Color::BLACK,
+                    italic: true,
+                    underline: true,
+                )
+                : new Style();
+        }
+    };
+    $frame = Frame::line('Palette', 'accent');
+
+    expect((new AnsiRenderer($theme, ColorDepth::BASIC))->render($frame))
+        ->toContain("\033[1;3;4;96;40mPalette\033[0m")
+        ->and((new AnsiRenderer($theme, ColorDepth::ANSI_256))->render($frame))
+        ->toContain("\033[1;3;4;38;5;14;48;5;0mPalette\033[0m")
+        ->and((new AnsiRenderer($theme, ColorDepth::TRUE_COLOR))->render($frame))
+        ->toContain("\033[1;3;4;38;2;34;211;238;48;2;15;23;42mPalette\033[0m")
+        ->and((new AnsiRenderer($theme, ColorDepth::NONE))->render($frame))
+        ->toBe('Palette' . PHP_EOL)
+        ->and((new PlainRenderer)->render($frame))->toBe('Palette' . PHP_EOL);
+});
+
+it('forces a safe basic palette on redirected output only when ANSI is explicitly enabled', function (): void {
+    $output = fopen('php://temp', 'w+');
+    $errors = fopen('php://temp', 'w+');
+    $io = new ConsoleIO(
+        $output,
+        $errors,
+        new TerminalCapabilities(false, false, false, ColorDepth::NONE, 80, 24),
+    );
+    $io->info('Ready');
+    $io->setAnsi(true);
+    $io->success('Colored');
+    rewind($output);
+
+    $rendered = stream_get_contents($output);
+    expect($rendered)->toStartWith('[INFO] Ready' . PHP_EOL)
+        ->and($rendered)->toContain("\033[1;92m[OK] Colored\033[0m")
+        ->and((new BufferedIO)->output())->toBe([]);
+});
+
+it('rejects obsolete command manifest formats explicitly', function (): void {
+    $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'console-old-manifest-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($path, "<?php\n\nreturn ['legacy:run' => []];\n");
+
+    try {
+        expect(fn() => CommandManifest::registry($path))
+            ->toThrow(UnexpectedValueException::class, 'must use format version 2');
+    } finally {
+        unlink($path);
+    }
 });

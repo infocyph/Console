@@ -7,6 +7,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Infocyph\Console\Worker\WorkerOptions;
+use Infocyph\Console\Worker\WorkerStopReason;
 use Infocyph\Console\Worker\WorkerSupervisor;
 use Infocyph\Console\Worker\WorkloadProbe;
 
@@ -90,6 +91,7 @@ for ($cycle = 1; $cycle <= $cycles; $cycle++) {
         || $summary->failed !== 0
         || $summary->forced !== 0
         || $summary->interrupted
+        || $summary->stopReason !== WorkerStopReason::EMPTY
     ) {
         fwrite(STDERR, sprintf('Worker soak cycle %d produced an invalid summary.%s', $cycle, PHP_EOL));
         exit(1);

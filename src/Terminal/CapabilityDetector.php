@@ -18,10 +18,12 @@ final class CapabilityDetector
         $outputTty = $this->isTty($output);
         $term = strtolower($this->env('TERM', $environment));
         $ci = $this->env('CI', $environment) !== '';
-        $noColor = $this->env('NO_COLOR', $environment) !== '';
+        $noColor = $this->present('NO_COLOR', $environment);
         $forceColor = !in_array(strtolower($this->env('FORCE_COLOR', $environment)), ['', '0', 'false'], true);
         $windowsTerminal = $this->env('WT_SESSION', $environment) !== '' || $this->env('ANSICON', $environment) !== '' || strtoupper($this->env('ConEmuANSI', $environment)) === 'ON';
-        $ansi = $outputTty && !$noColor && $term !== 'dumb' && (!$ci || $windowsTerminal || $forceColor);
+        $ansi = !$noColor
+            && $term !== 'dumb'
+            && ($forceColor || ($outputTty && (!$ci || $windowsTerminal)));
         $colorTerm = strtolower($this->env('COLORTERM', $environment));
         $depth = !$ansi ? ColorDepth::NONE : match (true) {
             str_contains($colorTerm, 'truecolor'), str_contains($colorTerm, '24bit') => ColorDepth::TRUE_COLOR,
@@ -65,6 +67,14 @@ final class CapabilityDetector
         }
 
         return function_exists('posix_isatty') && posix_isatty($stream);
+    }
+
+    /** @param array<string, string|false> $environment */
+    private function present(string $name, array $environment): bool
+    {
+        return array_key_exists($name, $environment)
+            ? $environment[$name] !== false
+            : getenv($name) !== false;
     }
 
     /** @param array<string, string|false> $environment */

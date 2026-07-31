@@ -30,6 +30,9 @@ final class SignalManager
             pcntl_async_signals(true);
         }
         pcntl_signal(SIGINT, $this->dispatchInterrupt(...));
+        if (defined('SIGTERM')) {
+            pcntl_signal(SIGTERM, $this->dispatchInterrupt(...));
+        }
 
         return true;
     }
