@@ -43,3 +43,4 @@ jobs:
       service_db_user: "console"
       service_db_password: "console"
       artifact_retention_days: 61
+
