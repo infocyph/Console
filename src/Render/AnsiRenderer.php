@@ -24,11 +24,18 @@ final readonly class AnsiRenderer implements Renderer
     {
         $output = '';
         foreach ($frame->lines as $line) {
-            $text = PlainRenderer::prefix($line->role) . $line->text;
-            $codes = $this->codes($line);
-            $output .= $codes === []
-                ? $text . PHP_EOL
-                : "\033[" . implode(';', $codes) . 'm' . $text . "\033[0m" . PHP_EOL;
+            if ($line->spans === []) {
+                $output .= $this->styled(PlainRenderer::prefix($line->role) . $line->text, $line->role);
+            } else {
+                $prefix = PlainRenderer::prefix($line->role);
+                if ($prefix !== '') {
+                    $output .= $this->styled($prefix, $line->role);
+                }
+                foreach ($line->spans as $span) {
+                    $output .= $this->styled($span->text, $span->role);
+                }
+            }
+            $output .= PHP_EOL;
         }
 
         return $output;
@@ -60,13 +67,13 @@ final readonly class AnsiRenderer implements Renderer
     }
 
     /** @return list<string> */
-    private function codes(Line $line): array
+    private function codes(string $role): array
     {
         if ($this->colorDepth === ColorDepth::NONE) {
             return [];
         }
 
-        $style = $this->theme->style($line->role);
+        $style = $this->theme->style($role);
         $codes = [];
         if ($style->bold) {
             $codes[] = '1';
@@ -151,5 +158,16 @@ final readonly class AnsiRenderer implements Renderer
             Color::BRIGHT_WHITE => [248, 250, 252],
             Color::DEFAULT => [203, 213, 225],
         };
+    }
+
+    private function styled(string $text, string $role): string
+    {
+        if ($text === '') {
+            return '';
+        }
+
+        $codes = $this->codes($role);
+
+        return $codes === [] ? $text : "\033[" . implode(';', $codes) . 'm' . $text . "\033[0m";
     }
 }

@@ -33,7 +33,11 @@ final class ContainerConfigurator
         return $this->compiledContainer;
     }
 
-    /** @param Closure(Container): void $configurer */
+    /**
+     * @param Closure $configurer Container configuration callback.
+     * @phpstan-param Closure(Container): void $configurer
+     * @psalm-param Closure(Container): void $configurer
+     */
     public function configure(Closure $configurer): void
     {
         $this->configurers[] = $configurer;

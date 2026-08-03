@@ -15,7 +15,12 @@ final class FrameDiffer
         $changed = [];
         foreach ($current->lines as $index => $line) {
             $before = $previous === null ? null : ($previous->lines[$index] ?? null);
-            if ($before === null || $before->text !== $line->text || $before->role !== $line->role) {
+            if (
+                $before === null
+                || $before->text !== $line->text
+                || $before->role !== $line->role
+                || $before->spans != $line->spans
+            ) {
                 $changed[] = $index;
             }
         }

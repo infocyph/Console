@@ -20,7 +20,11 @@ final class CommandExecutionCoordinator
 
     private ?CommandMutex $mutex = null;
 
-    /** @param null|\Closure(): CommandMutex $mutexFactory */
+    /**
+     * @param \Closure|null $mutexFactory Lazy mutex factory, or null when locking is unavailable.
+     * @phpstan-param (\Closure(): CommandMutex)|null $mutexFactory
+     * @psalm-param (\Closure(): CommandMutex)|null $mutexFactory
+     */
     public function __construct(
         private readonly ProcessRunner $processes,
         private readonly ?\Closure $mutexFactory = null,

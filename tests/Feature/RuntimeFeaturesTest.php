@@ -266,6 +266,26 @@ it('renders semantic frames in plain and JSON formats', function (): void {
         ->and((new JsonRenderer)->render($frame))->toBe('{"type":"success","message":"Created."}'.PHP_EOL);
 });
 
+it('colors definition labels, separators, and values independently', function (): void {
+    $frame = (new Details(['Command' => 'Run the worker.']))->frame();
+    $emptyFrame = (new Details(['Command' => 'Run the worker.']))->frame(0);
+    $line = $frame->lines[0];
+
+    expect($line->text)->toBe('Command: Run the worker.')
+        ->and($line->spans)->toHaveCount(3)
+        ->and((new AnsiRenderer(colorDepth: ColorDepth::BASIC))->render($frame))->toBe(
+            "\033[1;96mCommand\033[0m"
+            . "\033[2;90m: \033[0m"
+            . "\033[37mRun the worker.\033[0m"
+            . PHP_EOL,
+        )
+        ->and((new PlainRenderer)->render($frame))->toBe('Command: Run the worker.' . PHP_EOL)
+        ->and((new JsonRenderer)->render($frame))->toBe(
+            '{"type":"definition","message":"Command: Run the worker."}' . PHP_EOL,
+        )
+        ->and((new AnsiRenderer(colorDepth: ColorDepth::BASIC))->render($emptyFrame))->toBe(PHP_EOL);
+});
+
 it('finds changed and stale frame lines for live updates', function (): void {
     $differ = new FrameDiffer;
     $before = new Frame([new Line('one'), new Line('two')]);

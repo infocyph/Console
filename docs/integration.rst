@@ -31,8 +31,13 @@ Frameworks should supply their existing boundaries:
        ->containerProvider($frameworkContainerProvider)
        ->configurationProvider($frameworkConfigurationProvider)
        ->commands($commands)
-       ->commandGroup('System', ...$systemCommandNames)
+       ->commandGroup('System/Database', ...$databaseCommandNames)
+       ->commandGroup('System/Routing', ...$routingCommandNames)
        ->build();
+
+The first path segment is the owning section and the optional second segment
+is its module heading. Application commands without explicit ownership remain
+grouped by their ``namespace:command`` prefix.
 
 ``ContainerProvider::container()`` is called only for real command dispatch.
 Console applies its bindings once per returned container and never creates a
