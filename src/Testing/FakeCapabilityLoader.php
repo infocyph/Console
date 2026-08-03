@@ -13,7 +13,11 @@ final class FakeCapabilityLoader
     /** @var list<Capability> */
     private array $loaded = [];
 
-    /** @return Closure(Container): void */
+    /**
+     * @return Closure Capability configuration callback.
+     * @phpstan-return Closure(Container): void
+     * @psalm-return Closure(Container): void
+     */
     public function configurer(Capability $capability): Closure
     {
         return function () use ($capability): void {

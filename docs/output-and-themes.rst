@@ -23,7 +23,9 @@ Default palette
 The default semantic theme uses bright cyan for titles and accents, blue for
 sections and information, green for success and progress, yellow for warnings,
 red for errors, magenta for notes, and dim slate for borders or muted text.
-Styles are created once per theme and reused across rendered lines.
+Definition lists use bright-cyan labels, dim-slate separators, and white values
+so command names and descriptions remain visually distinct. Styles are created
+once per theme and reused across rendered lines.
 
 Components
 ----------
@@ -86,6 +88,9 @@ Implement ``Theme`` and return a ``Style`` for semantic roles:
                'success' => new Style(Color::BRIGHT_GREEN, bold: true),
                'warning' => new Style(Color::BLACK, background: Color::BRIGHT_YELLOW),
                'error' => new Style(Color::BRIGHT_WHITE, background: Color::RED),
+               'definition-label' => new Style(Color::BRIGHT_CYAN, bold: true),
+               'definition-separator' => new Style(Color::BRIGHT_BLACK, dim: true),
+               'definition-value' => new Style(Color::WHITE),
                'muted', 'border' => new Style(Color::BRIGHT_BLACK, dim: true),
                default => new Style(),
            };

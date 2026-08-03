@@ -6,6 +6,7 @@ namespace Infocyph\Console;
 
 use Infocyph\Console\Command\CommandDescriptor;
 use Infocyph\Console\Command\CommandExecutionCoordinator;
+use Infocyph\Console\Command\CommandListPresenter;
 use Infocyph\Console\Command\CommandRegistry;
 use Infocyph\Console\Command\CommandResolverProvider;
 use Infocyph\Console\Command\ExitCode;
@@ -87,18 +88,6 @@ final readonly class Application
             $this->completionManifest,
             $this->execution,
         );
-    }
-
-    private function commandGroup(CommandDescriptor $command): string
-    {
-        $name = $command->name();
-        if (isset($this->commandGroups[$name])) {
-            return $this->commandGroups[$name];
-        }
-
-        $separator = strpos($name, ':');
-
-        return $separator === false ? 'Application' : substr($name, 0, $separator);
     }
 
     private function commandNotFound(string $name, IO $io): int
@@ -377,22 +366,7 @@ final readonly class Application
 
     private function renderCommandList(IO $io): void
     {
-        $io->section('Available commands:');
-
-        $groups = [];
-        foreach ($this->registry->visible() as $command) {
-            $groups[$this->commandGroup($command)][] = $command;
-        }
-
-        foreach ($groups as $group => $commands) {
-            $io->text('');
-            $io->section($group . ':');
-            $definitions = [];
-            foreach ($commands as $command) {
-                $definitions['  ' . $command->name()] = $command->description();
-            }
-            $io->definitions($definitions);
-        }
+        new CommandListPresenter($this->commandGroups)->render($this->registry->visible(), $io);
     }
 
     private function renderCompletion(string $shell, IO $io): int

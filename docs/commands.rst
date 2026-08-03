@@ -84,6 +84,21 @@ segment. A framework can assign explicit ownership without renaming routes:
        ->commandGroup('System', 'config:cache', 'config:clear')
        ->build();
 
+Use a ``Group/Subgroup`` path when a framework owns enough commands to need a
+second navigation level. Console renders the path as nested headings rather
+than exposing the slash:
+
+.. code-block:: php
+
+   $application = Application::configure()
+       ->commands($commands)
+       ->commandGroup('System/Database', 'db:show', 'db:seed', 'migrate')
+       ->commandGroup('System/Routing', 'route:list', 'route:cache')
+       ->build();
+
+Group paths support at most two levels. This keeps ``list`` output scannable
+and prevents package-specific taxonomies from becoming an unbounded tree.
+
 Unknown commands and options include bounded fuzzy suggestions. Hidden commands
 remain dispatchable but are excluded from list and completion metadata.
 

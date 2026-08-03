@@ -11,7 +11,11 @@ final class CommandResolverProvider
 {
     private ?CommandResolver $resolver = null;
 
-    /** @param \Closure(): CommandResolver $factory */
+    /**
+     * @param \Closure $factory Lazy command-resolver factory.
+     * @phpstan-param \Closure(): CommandResolver $factory
+     * @psalm-param \Closure(): CommandResolver $factory
+     */
     public function __construct(private readonly \Closure $factory) {}
 
     public function get(): CommandResolver

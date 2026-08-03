@@ -8,7 +8,11 @@ final class ScheduleLease
 {
     private float $nextRefresh;
 
-    /** @param \Closure(): bool $refresh */
+    /**
+     * @param \Closure $refresh Callback that refreshes the active lease.
+     * @phpstan-param \Closure(): bool $refresh
+     * @psalm-param \Closure(): bool $refresh
+     */
     public function __construct(private readonly \Closure $refresh, private readonly float $leaseSeconds)
     {
         if ($leaseSeconds <= 0) {

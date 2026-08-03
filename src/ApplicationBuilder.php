@@ -216,12 +216,26 @@ final class ApplicationBuilder
         return $this;
     }
 
+    /**
+     * Assign commands to a top-level group or a two-level Group/Subgroup path.
+     *
+     * @param string $group Display path used by the command list.
+     * @param string ...$commands Registered command names owned by the path.
+     */
     public function commandGroup(string $group, string ...$commands): self
     {
         $group = trim($group);
         if ($group === '') {
             throw new \InvalidArgumentException('A command group name cannot be empty.');
         }
+
+        $segments = array_map(trim(...), explode('/', $group));
+        if (count($segments) > 2 || in_array('', $segments, true)) {
+            throw new \InvalidArgumentException(
+                'A command group must be a non-empty name or a two-level "Group/Subgroup" path.',
+            );
+        }
+        $group = implode('/', $segments);
 
         foreach ($commands as $command) {
             if ($command === '') {
@@ -292,7 +306,11 @@ final class ApplicationBuilder
         return $this;
     }
 
-    /** @param \Closure(Container): void $configurer */
+    /**
+     * @param \Closure $configurer Capability-scoped container configuration.
+     * @phpstan-param \Closure(Container): void $configurer
+     * @psalm-param \Closure(Container): void $configurer
+     */
     public function configureCapability(Capability $capability, \Closure $configurer): self
     {
         $this->capabilityConfigurers[$capability->value] ??= [];
@@ -301,7 +319,11 @@ final class ApplicationBuilder
         return $this;
     }
 
-    /** @param \Closure(Container): void $configurer */
+    /**
+     * @param \Closure $configurer Application container configuration.
+     * @phpstan-param \Closure(Container): void $configurer
+     * @psalm-param \Closure(Container): void $configurer
+     */
     public function configureContainer(\Closure $configurer): self
     {
         $this->container->configure($configurer);
@@ -360,7 +382,11 @@ final class ApplicationBuilder
         return $this;
     }
 
-    /** @param \Closure(): LockProviderInterface $provider */
+    /**
+     * @param \Closure $provider Lazy lock-provider factory.
+     * @phpstan-param \Closure(): LockProviderInterface $provider
+     * @psalm-param \Closure(): LockProviderInterface $provider
+     */
     public function lockProviderFactory(\Closure $provider): self
     {
         $this->locks = $provider;

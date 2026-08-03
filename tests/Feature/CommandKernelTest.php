@@ -134,6 +134,25 @@ it('groups commands by explicit group or route namespace without constructing th
         ->and(UnconstructedFixtureCommand::$instances)->toBe(0);
 });
 
+it('renders two-level command groups without flattening their ownership', function (): void {
+    $io = new BufferedIO;
+    $application = Application::configure()
+        ->commands([
+            KernelFixtureCommand::class,
+            UnconstructedFixtureCommand::class,
+        ])
+        ->commandGroup('System / Database', 'users:create')
+        ->commandGroup('System/Runtime', 'unconstructed')
+        ->io($io)
+        ->build();
+
+    expect($application->run(['tool', 'list']))->toBe(ExitCode::SUCCESS)
+        ->and($io->outputText())->toContain(
+            "Available commands:\n\nSystem:\n  Database:\n    users:create",
+            "\n\n  Runtime:\n    unconstructed",
+        );
+});
+
 it('rejects invalid and conflicting explicit command groups', function (): void {
     expect(fn () => Application::configure()->commandGroup(''))
         ->toThrow(InvalidArgumentException::class, 'cannot be empty')
@@ -141,6 +160,10 @@ it('rejects invalid and conflicting explicit command groups', function (): void 
         ->toThrow(InvalidArgumentException::class, 'non-empty string')
         ->and(fn () => Application::configure()->commandGroup('System', 1))
         ->toThrow(TypeError::class)
+        ->and(fn () => Application::configure()->commandGroup('System/Database/Read', 'users:create'))
+        ->toThrow(InvalidArgumentException::class, 'two-level')
+        ->and(fn () => Application::configure()->commandGroup('System/', 'users:create'))
+        ->toThrow(InvalidArgumentException::class, 'two-level')
         ->and(fn () => Application::configure()
             ->commandGroup('System', 'users:create')
             ->commandGroup('users', 'users:create'))
