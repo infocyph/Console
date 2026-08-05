@@ -23,41 +23,51 @@ final class ContainerFactory
 
     public function create(ContainerConfigurator $configuration): Container
     {
-        $provider = $configuration->containerProvider();
-        if ($provider === null && $this->standalone !== null) {
+        $containerProvider = $configuration->containerProvider();
+        if ($containerProvider === null && $this->standalone !== null) {
             return $this->standalone;
         }
 
-        $container = $provider?->container() ?? new Container('infocyph.console.' . bin2hex(random_bytes(8)));
+        $container = $containerProvider?->container() ?? new Container('infocyph.console.' . bin2hex(random_bytes(8)));
 
-        if ($provider !== null && isset($this->configured[$container])) {
+        if ($containerProvider !== null && isset($this->configured[$container])) {
             return $container;
         }
 
-        if ($provider === null) {
-            $container->options()->setOptions(injection: true);
-            $container->enableLazyLoading();
-        }
+        $this->configure($container, $configuration);
 
-        foreach ($configuration->providers() as $provider) {
-            $container->registration()->import($provider);
-        }
-
-        foreach ($configuration->configurers() as $configurer) {
-            $configurer($container);
-        }
-
-        $compiledContainer = $configuration->compiledContainerPath();
-        if ($compiledContainer !== null && is_file($compiledContainer)) {
-            $container->useCompiled($compiledContainer);
-        }
-
-        if ($provider !== null) {
+        if ($containerProvider !== null) {
             $this->configured[$container] = true;
         } else {
             $this->standalone = $container;
         }
 
         return $container;
+    }
+
+    private function configure(Container $container, ContainerConfigurator $configuration): void
+    {
+        foreach ($configuration->providers() as $serviceProvider) {
+            $container->registration()->import($serviceProvider);
+        }
+
+        foreach ($configuration->configurers() as $configurer) {
+            $configurer($container);
+        }
+
+        $this->loadCompiledContainer($container, $configuration);
+    }
+
+    private function loadCompiledContainer(Container $container, ContainerConfigurator $configuration): void
+    {
+        $compiledContainer = $configuration->compiledContainerPath();
+        if ($compiledContainer !== null && is_file($compiledContainer)) {
+            $fingerprint = $configuration->compiledContainerFingerprint();
+            if ($fingerprint === null) {
+                $container->useCompiled($compiledContainer);
+            } else {
+                $container->usePrevalidated($compiledContainer, $fingerprint);
+            }
+        }
     }
 }

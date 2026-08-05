@@ -15,6 +15,8 @@ final class ContainerConfigurator
 {
     private ?string $compiledContainer = null;
 
+    private ?string $compiledContainerFingerprint = null;
+
     /** @var list<Closure(Container): void> */
     private array $configurers = [];
 
@@ -23,9 +25,24 @@ final class ContainerConfigurator
     /** @var list<class-string<ServiceProviderInterface>|ServiceProviderInterface> */
     private array $providers = [];
 
-    public function compiledContainer(?string $path): void
+    public function compiledContainer(?string $path, ?string $fingerprint = null): void
     {
+        if ($fingerprint !== null && preg_match('/^[a-f0-9]{64}$/D', $fingerprint) !== 1) {
+            throw new \InvalidArgumentException(
+                'A prevalidated container fingerprint must be a SHA-256 hexadecimal digest.',
+            );
+        }
+        if ($path === null && $fingerprint !== null) {
+            throw new \InvalidArgumentException('A prevalidated container fingerprint requires an artifact path.');
+        }
+
         $this->compiledContainer = $path;
+        $this->compiledContainerFingerprint = $fingerprint;
+    }
+
+    public function compiledContainerFingerprint(): ?string
+    {
+        return $this->compiledContainerFingerprint;
     }
 
     public function compiledContainerPath(): ?string

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Infocyph\Console\Application;
 use Infocyph\Console\Command\Command;
+use Infocyph\Console\Command\CommandContext;
+use Infocyph\Console\Command\CommandContract;
 use Infocyph\Console\Command\CommandDefinition;
 use Infocyph\Console\Command\ExitCode;
 use Infocyph\Console\Input\Argument;
@@ -72,8 +74,33 @@ final class VariadicEnvironmentFixtureCommand extends Command
     }
 }
 
+final class InvokableFixtureCommand implements CommandContract
+{
+    public static int $invocations = 0;
+
+    public static ?string $lastArgument = null;
+
+    public function __invoke(string $required): void
+    {
+        self::$invocations++;
+        self::$lastArgument = $required;
+    }
+
+    public static function define(CommandDefinition $command): void
+    {
+        $command->name('invokable');
+    }
+
+    public function run(CommandContext $context): int
+    {
+        $context->io()->success('Invokable command constructed.');
+
+        return ExitCode::SUCCESS;
+    }
+}
+
 it('parses typed arguments, flags, short options, and multiple values', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->name('tool')
         ->version('1.0.0')
@@ -86,7 +113,7 @@ it('parses typed arguments, flags, short options, and multiple values', function
 });
 
 it('uses command map keys as the authoritative route names', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->commands(['accounts:create' => KernelFixtureCommand::class])
         ->io($io)
@@ -97,9 +124,24 @@ it('uses command map keys as the authoritative route names', function (): void {
         ->and($application->run(['tool', 'users:create', '42']))->toBe(ExitCode::COMMAND_NOT_FOUND);
 });
 
+it('constructs invokable command classes without invoking them', function (): void {
+    InvokableFixtureCommand::$invocations = 0;
+    InvokableFixtureCommand::$lastArgument = null;
+    $io = new BufferedIO();
+    $application = Application::configure()
+        ->commands([InvokableFixtureCommand::class])
+        ->io($io)
+        ->build();
+
+    expect($application->run(['tool', 'invokable']))->toBe(ExitCode::SUCCESS)
+        ->and(InvokableFixtureCommand::$invocations)->toBe(0)
+        ->and(InvokableFixtureCommand::$lastArgument)->toBeNull()
+        ->and($io->output())->toBe(['[OK] Invokable command constructed.']);
+});
+
 it('uses the command preflight paths without constructing registered commands', function (): void {
     UnconstructedFixtureCommand::$instances = 0;
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->name('tool')
         ->version('1.2.3')
@@ -114,7 +156,7 @@ it('uses the command preflight paths without constructing registered commands', 
 
 it('groups commands by explicit group or route namespace without constructing them', function (): void {
     UnconstructedFixtureCommand::$instances = 0;
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->commands([
             KernelFixtureCommand::class,
@@ -135,7 +177,7 @@ it('groups commands by explicit group or route namespace without constructing th
 });
 
 it('renders two-level command groups without flattening their ownership', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->commands([
             KernelFixtureCommand::class,
@@ -154,24 +196,24 @@ it('renders two-level command groups without flattening their ownership', functi
 });
 
 it('rejects invalid and conflicting explicit command groups', function (): void {
-    expect(fn () => Application::configure()->commandGroup(''))
+    expect(fn() => Application::configure()->commandGroup(''))
         ->toThrow(InvalidArgumentException::class, 'cannot be empty')
-        ->and(fn () => Application::configure()->commandGroup('System', ''))
+        ->and(fn() => Application::configure()->commandGroup('System', ''))
         ->toThrow(InvalidArgumentException::class, 'non-empty string')
-        ->and(fn () => Application::configure()->commandGroup('System', 1))
+        ->and(fn() => Application::configure()->commandGroup('System', 1))
         ->toThrow(TypeError::class)
-        ->and(fn () => Application::configure()->commandGroup('System/Database/Read', 'users:create'))
+        ->and(fn() => Application::configure()->commandGroup('System/Database/Read', 'users:create'))
         ->toThrow(InvalidArgumentException::class, 'two-level')
-        ->and(fn () => Application::configure()->commandGroup('System/', 'users:create'))
+        ->and(fn() => Application::configure()->commandGroup('System/', 'users:create'))
         ->toThrow(InvalidArgumentException::class, 'two-level')
-        ->and(fn () => Application::configure()
+        ->and(fn() => Application::configure()
             ->commandGroup('System', 'users:create')
             ->commandGroup('users', 'users:create'))
         ->toThrow(InvalidArgumentException::class, 'already assigned');
 });
 
 it('reports parser failures as invalid usage', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->commands([KernelFixtureCommand::class])
         ->io($io)
@@ -183,8 +225,9 @@ it('reports parser failures as invalid usage', function (): void {
 
 it('preserves the command delimiter and uses typed environment defaults', function (): void {
     putenv('CONSOLE_FORCE=false');
+
     try {
-        $io = new BufferedIO;
+        $io = new BufferedIO();
         $application = Application::configure()
             ->commands([KernelFixtureCommand::class])
             ->io($io)
@@ -198,17 +241,18 @@ it('preserves the command delimiter and uses typed environment defaults', functi
 });
 
 it('rejects incompatible option and argument defaults at definition time', function (): void {
-    expect(fn (): Argument => Argument::optional('count', 'invalid')->type(ValueType::INTEGER))->toThrow(InvalidArgumentException::class)
-        ->and(fn (): Argument => Argument::variadic('ids')->type(ValueType::INTEGER)->default(['bad']))->toThrow(InvalidArgumentException::class)
-        ->and(fn (): Argument => Argument::variadic('ids')->env('CONSOLE_IDS'))->toThrow(InvalidArgumentException::class)
-        ->and(fn (): Option => Option::flag('force')->type(ValueType::STRING))->toThrow(LogicException::class)
-        ->and(fn (): Option => Option::multiple('tag')->default('one'))->toThrow(InvalidArgumentException::class);
+    expect(fn(): Argument => Argument::optional('count', 'invalid')->type(ValueType::INTEGER))->toThrow(InvalidArgumentException::class)
+        ->and(fn(): Argument => Argument::variadic('ids')->type(ValueType::INTEGER)->default(['bad']))->toThrow(InvalidArgumentException::class)
+        ->and(fn(): Argument => Argument::variadic('ids')->env('CONSOLE_IDS'))->toThrow(InvalidArgumentException::class)
+        ->and(fn(): Option => Option::flag('force')->type(ValueType::STRING))->toThrow(LogicException::class)
+        ->and(fn(): Option => Option::multiple('tag')->default('one'))->toThrow(InvalidArgumentException::class);
 });
 
 it('splits variadic environment values with their declared delimiter', function (): void {
     putenv('CONSOLE_IDS=10:20:30');
+
     try {
-        $io = new BufferedIO;
+        $io = new BufferedIO();
         $application = Application::configure()->commands([VariadicEnvironmentFixtureCommand::class])->io($io)->build();
 
         expect($application->run(['tool', 'ids:show']))->toBe(ExitCode::SUCCESS)

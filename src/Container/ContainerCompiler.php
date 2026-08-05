@@ -8,8 +8,20 @@ final readonly class ContainerCompiler
 {
     public function __construct(private ContainerFactory $factory) {}
 
-    public function compile(ContainerConfigurator $configuration, string $path): void
+    /**
+     * @return array{
+     *     path: string,
+     *     fingerprint: string,
+     *     compiled: array<int, string>,
+     *     skipped: array<string, string>
+     * }
+     */
+    public function compile(ContainerConfigurator $configuration, string $path): array
     {
-        $this->factory->create($configuration)->compileTo($path);
+        $container = $this->factory->create($configuration);
+        $container->compileTo($path);
+
+        return $container->compilationReport()
+            ?? throw new \LogicException('InterMix did not publish a container compilation report.');
     }
 }
