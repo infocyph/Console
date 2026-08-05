@@ -16,6 +16,21 @@ Preflight uses static descriptors and compiled manifests. Inline commands avoid
 ``proc_open``. Optional capability, configuration, validation, Omnibus, and
 container work remains lazy until a selected command needs it.
 
+InterMix integration
+--------------------
+
+Console reuses immutable standalone wiring while entering a fresh scope for
+each command. Imported service providers run once, and invokable command
+classes are constructed without invoking ``__invoke()``.
+
+Compiled container artifacts trade cache-time work for less runtime
+reflection. ``compiledContainer()`` validates the complete artifact when the
+command container is first needed. Immutable deployments may instead use
+``prevalidatedCompiledContainer()`` with the fingerprint emitted during cache
+generation. Do not enable either path solely because an artifact exists:
+without OPcache/preloading, loading it can cost more than dynamic resolution
+for a small command.
+
 Worker capacity
 ---------------
 

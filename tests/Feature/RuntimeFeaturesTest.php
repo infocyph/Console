@@ -17,6 +17,9 @@ use Infocyph\Console\Component\HorizontalRule;
 use Infocyph\Console\Component\Paragraph;
 use Infocyph\Console\Configuration\Configuration;
 use Infocyph\Console\Configuration\ConfigurationProvider;
+use Infocyph\Console\Container\ContainerCompiler;
+use Infocyph\Console\Container\ContainerConfigurator;
+use Infocyph\Console\Container\ContainerFactory;
 use Infocyph\Console\Container\ContainerProvider;
 use Infocyph\Console\Discovery\CommandManifest;
 use Infocyph\Console\Discovery\CommandManifestCompiler;
@@ -69,12 +72,26 @@ use Infocyph\Console\Testing\FrameSnapshot;
 use Infocyph\Console\Testing\SubprocessRunner;
 use Infocyph\Epicrypt\Generate\KeyMaterial\KeyMaterialGenerator;
 use Infocyph\InterMix\DI\Container;
+use Infocyph\InterMix\DI\Invoker\CompiledCall;
+use Infocyph\InterMix\DI\Support\LifetimeEnum;
+use Infocyph\InterMix\DI\Support\ServiceProviderInterface;
 
 final readonly class InjectedGreeting
 {
     public function message(): string
     {
         return 'Injected service resolved.';
+    }
+}
+
+final class GreetingServiceProvider implements ServiceProviderInterface
+{
+    public static int $registrations = 0;
+
+    public function register(Container $container): void
+    {
+        self::$registrations++;
+        $container->definitions()->bind(InjectedGreeting::class, new InjectedGreeting());
     }
 }
 
@@ -106,7 +123,7 @@ final class PromptCommand extends Command
     protected function handle(): int
     {
         $name = $this->io()->prompts()->text('Name', required: true, sanitize: ['trim', 'lowercase']);
-        $this->io()->success('Hello '.$name.'.');
+        $this->io()->success('Hello ' . $name . '.');
 
         return ExitCode::SUCCESS;
     }
@@ -123,7 +140,7 @@ final class ValidatedCommand extends Command
 
     protected function handle(): int
     {
-        $this->io()->success($this->arguments()->string('email').' '.$this->options()->nullableInt('age'));
+        $this->io()->success($this->arguments()->string('email') . ' ' . $this->options()->nullableInt('age'));
 
         return ExitCode::SUCCESS;
     }
@@ -199,7 +216,7 @@ final class ProtectedIdentityCommand extends Command
 
     protected function handle(): int
     {
-        $this->io()->success($this->execution->command.':'.$this->execution->id);
+        $this->io()->success($this->execution->command . ':' . $this->execution->id);
 
         return ExitCode::SUCCESS;
     }
@@ -247,11 +264,11 @@ final class ThrowingFixtureCommand extends Command
 }
 
 it('constructs only the selected command through the InterMix command scope', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->commands([InjectedCommand::class])
         ->configureContainer(function (Container $container): void {
-            $container->definitions()->bind(InjectedGreeting::class, new InjectedGreeting);
+            $container->definitions()->bind(InjectedGreeting::class, new InjectedGreeting());
         })
         ->io($io)
         ->build();
@@ -262,8 +279,8 @@ it('constructs only the selected command through the InterMix command scope', fu
 
 it('renders semantic frames in plain and JSON formats', function (): void {
     $frame = new Frame([new Line('Created.', 'success')]);
-    expect((new PlainRenderer)->render($frame))->toBe('[OK] Created.'.PHP_EOL)
-        ->and((new JsonRenderer)->render($frame))->toBe('{"type":"success","message":"Created."}'.PHP_EOL);
+    expect((new PlainRenderer())->render($frame))->toBe('[OK] Created.' . PHP_EOL)
+        ->and((new JsonRenderer())->render($frame))->toBe('{"type":"success","message":"Created."}' . PHP_EOL);
 });
 
 it('colors definition labels, separators, and values independently', function (): void {
@@ -279,15 +296,15 @@ it('colors definition labels, separators, and values independently', function ()
             . "\033[37mRun the worker.\033[0m"
             . PHP_EOL,
         )
-        ->and((new PlainRenderer)->render($frame))->toBe('Command: Run the worker.' . PHP_EOL)
-        ->and((new JsonRenderer)->render($frame))->toBe(
+        ->and((new PlainRenderer())->render($frame))->toBe('Command: Run the worker.' . PHP_EOL)
+        ->and((new JsonRenderer())->render($frame))->toBe(
             '{"type":"definition","message":"Command: Run the worker."}' . PHP_EOL,
         )
         ->and((new AnsiRenderer(colorDepth: ColorDepth::BASIC))->render($emptyFrame))->toBe(PHP_EOL);
 });
 
 it('finds changed and stale frame lines for live updates', function (): void {
-    $differ = new FrameDiffer;
+    $differ = new FrameDiffer();
     $before = new Frame([new Line('one'), new Line('two')]);
     $after = new Frame([new Line('one'), new Line('three')]);
     expect($differ->changedLineIndexes($before, $after))->toBe([1])
@@ -296,7 +313,7 @@ it('finds changed and stale frame lines for live updates', function (): void {
 });
 
 it('renders typed visual components through buffered IO', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $io->title('Deploy');
     $io->table(['Name', 'State'], [['API', 'ready']]);
     $io->listing(['first', 'second'], ordered: true);
@@ -311,21 +328,21 @@ it('uses queued prompt answers and refuses missing input in non-interactive mode
     expect($application->run(['tool', 'prompt']))->toBe(0)
         ->and($io->output())->toContain('[OK] Hello ada.');
 
-    $quietIo = new BufferedIO;
+    $quietIo = new BufferedIO();
     $nonInteractive = Application::configure()->commands([PromptCommand::class])->io($quietIo)->build();
     expect($nonInteractive->run(['tool', '--no-interaction', 'prompt']))->toBe(ExitCode::INVALID_USAGE)
         ->and($quietIo->errors())->toBe(['[ERROR] Name requires input, but interaction is disabled.']);
 });
 
 it('sanitizes and semantically validates parsed command input once before resolving the command', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()->commands([ValidatedCommand::class])->io($io)->build();
     expect($application->run(['tool', 'user:create', '  ADA@EXAMPLE.COM  ', '--age', '30']))->toBe(0)
         ->and($io->output())->toBe(['[OK] ada@example.com 30']);
 });
 
 it('renders all ReqShield validation failures as a usage error', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()->commands([ValidatedCommand::class])->io($io)->build();
     expect($application->run(['tool', 'user:create', 'invalid', '--age', '14']))->toBe(ExitCode::INVALID_USAGE)
         ->and($io->errors())->toContain('[ERROR] Invalid command input')
@@ -345,11 +362,11 @@ it('emits structured JSON validation failures', function (): void {
     $io->setFormat('json');
     $io->validationFailures([['field' => 'email', 'rule' => 'email', 'message' => 'Invalid email.']]);
     rewind($errors);
-    expect(stream_get_contents($errors))->toBe('{"error":"invalid_input","exit_code":2,"failures":[{"field":"email","rule":"email","message":"Invalid email."}]}'.PHP_EOL);
+    expect(stream_get_contents($errors))->toBe('{"error":"invalid_input","exit_code":2,"failures":[{"field":"email","rule":"email","message":"Invalid email."}]}' . PHP_EOL);
 });
 
 it('loads validated application configuration only for a resolved command', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->configuration(['name' => '  Console  ', 'nested' => ['one' => true]])
         ->configuration(['nested' => ['two' => true]])
@@ -363,8 +380,7 @@ it('loads validated application configuration only for a resolved command', func
 
 it('lazily reuses external container and configuration providers across command scopes', function (): void {
     $container = new Container('testing.external');
-    $containerProvider = new class($container) implements ContainerProvider
-    {
+    $containerProvider = new class ($container) implements ContainerProvider {
         public int $calls = 0;
 
         public function __construct(private readonly Container $container) {}
@@ -376,8 +392,7 @@ it('lazily reuses external container and configuration providers across command 
             return $this->container;
         }
     };
-    $configurationProvider = new class implements ConfigurationProvider
-    {
+    $configurationProvider = new class implements ConfigurationProvider {
         public int $calls = 0;
 
         public int $profileChanges = 0;
@@ -399,7 +414,7 @@ it('lazily reuses external container and configuration providers across command 
     };
     $containerConfigurations = 0;
     $networkActivations = 0;
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     ExternalRuntimeCommand::$instances = 0;
     $application = Application::configure()
         ->commands([ExternalRuntimeCommand::class])
@@ -407,7 +422,7 @@ it('lazily reuses external container and configuration providers across command 
         ->configurationProvider($configurationProvider)
         ->configureContainer(function (Container $configured) use (&$containerConfigurations): void {
             $containerConfigurations++;
-            $configured->definitions()->bind(InjectedGreeting::class, new InjectedGreeting);
+            $configured->definitions()->bind(InjectedGreeting::class, new InjectedGreeting());
         })
         ->configureCapability(Capability::NETWORK, function () use (&$networkActivations): void {
             $networkActivations++;
@@ -437,12 +452,12 @@ it('lazily reuses external container and configuration providers across command 
 
 it('lazily creates and reuses one standalone container across isolated command scopes', function (): void {
     $configurations = 0;
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()
         ->commands([InjectedCommand::class])
         ->configureContainer(function (Container $container) use (&$configurations): void {
             $configurations++;
-            $container->definitions()->bind(InjectedGreeting::class, new InjectedGreeting);
+            $container->definitions()->bind(InjectedGreeting::class, new InjectedGreeting());
         })
         ->io($io)
         ->build();
@@ -453,9 +468,52 @@ it('lazily creates and reuses one standalone container across isolated command s
         ->and($configurations)->toBe(1);
 });
 
+it('reuses a standalone container after importing service providers', function (): void {
+    GreetingServiceProvider::$registrations = 0;
+    $application = Application::configure()
+        ->commands([InjectedCommand::class])
+        ->provider(new GreetingServiceProvider())
+        ->io(new BufferedIO())
+        ->build();
+
+    expect($application->run(['tool', 'injected']))->toBe(ExitCode::SUCCESS)
+        ->and($application->run(['tool', 'injected']))->toBe(ExitCode::SUCCESS)
+        ->and(GreetingServiceProvider::$registrations)->toBe(1);
+});
+
+it('publishes and loads deployment-prevalidated InterMix artifacts', function (): void {
+    $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'console-container-' . bin2hex(random_bytes(6)) . '.php';
+    $configure = static function (): ContainerConfigurator {
+        $configuration = new ContainerConfigurator();
+        $configuration->configure(static function (Container $container): void {
+            $container->bind(InjectedGreeting::class, InjectedGreeting::class, LifetimeEnum::Transient);
+        });
+
+        return $configuration;
+    };
+
+    try {
+        $report = new ContainerCompiler(new ContainerFactory())->compile($configure(), $path);
+        $runtime = $configure();
+        $runtime->compiledContainer($path, $report['fingerprint']);
+        $container = new ContainerFactory()->create($runtime);
+
+        expect($report['path'])->toBe($path)
+            ->and($report['fingerprint'])->toMatch('/^[a-f0-9]{64}$/D')
+            ->and($report['compiled'])->toContain(InjectedGreeting::class)
+            ->and($container->getCurrentResolver())->toBeInstanceOf(CompiledCall::class)
+            ->and($container->get(InjectedGreeting::class))->toBeInstanceOf(InjectedGreeting::class)
+            ->and(fn() => $runtime->compiledContainer($path, 'invalid'))
+            ->toThrow(InvalidArgumentException::class, 'SHA-256');
+    } finally {
+        if (is_file($path)) {
+            unlink($path);
+        }
+    }
+});
+
 it('rejects ambiguous local and external configuration sources', function (): void {
-    $provider = new class implements ConfigurationProvider
-    {
+    $provider = new class implements ConfigurationProvider {
         public function configuration(): Configuration
         {
             return Configuration::fromArray([]);
@@ -472,32 +530,34 @@ it('rejects ambiguous local and external configuration sources', function (): vo
 });
 
 it('loads compiled command metadata without executing definitions at runtime', function (): void {
-    $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-manifest-'.bin2hex(random_bytes(6)).'.php';
-    $compiler = new CommandManifestCompiler;
+    $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'console-manifest-' . bin2hex(random_bytes(6)) . '.php';
+    $compiler = new CommandManifestCompiler();
+
     try {
         ManifestCommand::$definitions = 0;
         $compiler->write([ManifestCommand::class], $path);
         expect(ManifestCommand::$definitions)->toBe(1);
         ManifestCommand::$definitions = 0;
-        $io = new BufferedIO;
+        $io = new BufferedIO();
         $application = Application::configure()->commandManifest($path)->io($io)->build();
         expect($application->run(['tool', 'manifest:run', 'Ada']))->toBe(0)
             ->and($io->output())->toBe(['[OK] Ada'])
             ->and(ManifestCommand::$definitions)->toBe(0)
-            ->and(glob(dirname($path).DIRECTORY_SEPARATOR.pathinfo($path, PATHINFO_FILENAME).'-*.php'))
+            ->and(glob(dirname($path) . DIRECTORY_SEPARATOR . pathinfo($path, PATHINFO_FILENAME) . '-*.php'))
             ->toHaveCount(1)
-            ->and(is_dir($path.'.d'))->toBeFalse();
+            ->and(is_dir($path . '.d'))->toBeFalse();
     } finally {
         removeCommandManifestFixture($path);
     }
 });
 
 it('preserves authoritative command map names in compiled manifests', function (): void {
-    $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-mapped-manifest-'.bin2hex(random_bytes(6)).'.php';
-    $compiler = new CommandManifestCompiler;
+    $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'console-mapped-manifest-' . bin2hex(random_bytes(6)) . '.php';
+    $compiler = new CommandManifestCompiler();
+
     try {
         $compiler->write(['manifest:mapped' => ManifestCommand::class], $path);
-        $io = new BufferedIO;
+        $io = new BufferedIO();
         $application = Application::configure()->commandManifest($path)->io($io)->build();
 
         expect($application->run(['tool', 'manifest:mapped', 'Ada']))->toBe(ExitCode::SUCCESS)
@@ -508,23 +568,23 @@ it('preserves authoritative command map names in compiled manifests', function (
 });
 
 it('rebuilds and clears direct command shards without touching sibling files', function (): void {
-    $directory = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-manifest-cache-'.bin2hex(random_bytes(6));
-    $path = $directory.DIRECTORY_SEPARATOR.'commands.php';
-    $sentinel = $directory.DIRECTORY_SEPARATOR.'.gitignore';
-    $compiler = new CommandManifestCompiler;
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'console-manifest-cache-' . bin2hex(random_bytes(6));
+    $path = $directory . DIRECTORY_SEPARATOR . 'commands.php';
+    $sentinel = $directory . DIRECTORY_SEPARATOR . '.gitignore';
+    $compiler = new CommandManifestCompiler();
     mkdir($directory, 0775, true);
     file_put_contents($sentinel, "*\n!.gitignore\n");
 
     try {
         $compiler->write([ManifestCommand::class], $path);
         expect($path)->toBeFile()
-            ->and(glob($directory.DIRECTORY_SEPARATOR.'commands-*.php'))->toHaveCount(1)
-            ->and(is_dir($path.'.d'))->toBeFalse()
+            ->and(glob($directory . DIRECTORY_SEPARATOR . 'commands-*.php'))->toHaveCount(1)
+            ->and(is_dir($path . '.d'))->toBeFalse()
             ->and($sentinel)->toBeFile();
 
         $compiler->write([], $path);
         expect($path)->toBeFile()
-            ->and(glob($directory.DIRECTORY_SEPARATOR.'commands-*.php') ?: [])->toBe([])
+            ->and(glob($directory . DIRECTORY_SEPARATOR . 'commands-*.php') ?: [])->toBe([])
             ->and($sentinel)->toBeFile();
     } finally {
         removeCommandManifestFixture($path);
@@ -542,8 +602,8 @@ function removeCommandManifestFixture(string $path): void
     if (is_file($path)) {
         unlink($path);
     }
-    $prefix = pathinfo(basename($path), PATHINFO_FILENAME).'-';
-    foreach (glob(dirname($path).DIRECTORY_SEPARATOR.$prefix.'*.php') ?: [] as $entry) {
+    $prefix = pathinfo(basename($path), PATHINFO_FILENAME) . '-';
+    foreach (glob(dirname($path) . DIRECTORY_SEPARATOR . $prefix . '*.php') ?: [] as $entry) {
         unlink($entry);
     }
 }
@@ -553,8 +613,7 @@ it('activates declared infrastructure only for selected commands and authorizes 
     $networkActivations = 0;
     $application = Application::configure()
         ->commands([ProtectedIdentityCommand::class, NetworkCapabilityCommand::class])
-        ->otpVerifier(new class implements OtpVerifier
-        {
+        ->otpVerifier(new class implements OtpVerifier {
             public function verify(string $code): bool
             {
                 return $code === '123456';
@@ -577,21 +636,22 @@ it('activates declared infrastructure only for selected commands and authorizes 
 });
 
 it('protects secure configuration and verifies artifact content through Epicrypt', function (): void {
-    $key = (new KeyMaterialGenerator)->forSecretBox();
+    $key = (new KeyMaterialGenerator())->forSecretBox();
     $configuration = new SecureConfiguration($key);
     $encrypted = $configuration->encrypt('sensitive-value');
 
     expect($encrypted)->not->toBe('sensitive-value')
         ->and($configuration->decrypt($encrypted))->toBe('sensitive-value')
-        ->and((new ArtifactVerifier)->verifyContents('release', hash('sha256', 'release')))->toBeTrue()
-        ->and((new ArtifactVerifier)->verifyContents('release', hash('sha256', 'other')))->toBeFalse();
+        ->and((new ArtifactVerifier())->verifyContents('release', hash('sha256', 'release')))->toBeTrue()
+        ->and((new ArtifactVerifier())->verifyContents('release', hash('sha256', 'other')))->toBeFalse();
 });
 
 it('stores encrypted local secrets using atomic Pathwise workspace writes', function (): void {
-    $root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-workspace-'.bin2hex(random_bytes(6));
+    $root = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'console-workspace-' . bin2hex(random_bytes(6));
+
     try {
         $workspace = new Workspace($root);
-        $key = (new KeyMaterialGenerator)->forSecretBox();
+        $key = (new KeyMaterialGenerator())->forSecretBox();
         $secrets = new SecretStore($workspace, $key);
         $secrets->put('api.token', 'local-secret');
 
@@ -642,9 +702,9 @@ it('drives real commands through the public testing API', function (): void {
 
 it('provides deterministic terminal, frame, signal, clock, and subprocess fixtures', function (): void {
     $terminal = FakeTerminal::redirected(120, 40);
-    $capabilities = new FakeCapabilityLoader;
+    $capabilities = new FakeCapabilityLoader();
     $clock = new FakeClock(100);
-    $signals = new FakeSignalManager;
+    $signals = new FakeSignalManager();
     $interrupted = false;
     $signals->onInterrupt(function () use (&$interrupted): void {
         $interrupted = true;
@@ -654,14 +714,14 @@ it('provides deterministic terminal, frame, signal, clock, and subprocess fixtur
 
     $snapshot = FrameSnapshot::capture(Frame::line('Ready', 'success'));
     $snapshot->assertMatches(Frame::line('Ready', 'success'));
-    $process = (new SubprocessRunner)->run([PHP_BINARY, '-r', 'fwrite(STDERR, "warning"); echo getenv("CONSOLE_TEST_VALUE");'], ['CONSOLE_TEST_VALUE' => 'ok']);
+    $process = (new SubprocessRunner())->run([PHP_BINARY, '-r', 'fwrite(STDERR, "warning"); echo getenv("CONSOLE_TEST_VALUE");'], ['CONSOLE_TEST_VALUE' => 'ok']);
     $capabilities->configurer(Capability::NETWORK)(new Container('testing.capability'));
 
     expect($terminal->capabilities()->interactive)->toBeFalse()
         ->and($terminal->capabilities()->width)->toBe(120)
         ->and($clock->now())->toBe(120)
         ->and($interrupted)->toBeTrue()
-        ->and($snapshot->contents())->toBe('[OK] Ready'.PHP_EOL)
+        ->and($snapshot->contents())->toBe('[OK] Ready' . PHP_EOL)
         ->and($process->exitCode)->toBe(0)
         ->and($process->output)->toBe('ok')
         ->and($process->errorOutput)->toBe('warning')
@@ -669,7 +729,7 @@ it('provides deterministic terminal, frame, signal, clock, and subprocess fixtur
 });
 
 it('hardens global options, JSON errors, and unexpected failure output', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()->name('tool')->version('1.0.0')->commands([ThrowingFixtureCommand::class])->io($io)->build();
     expect($application->run(['tool', '--profile', 'production', '--version']))->toBe(0)
         ->and($io->output())->toBe(['tool 1.0.0'])
@@ -684,13 +744,13 @@ it('hardens global options, JSON errors, and unexpected failure output', functio
     $jsonApplication = Application::configure()->io($jsonIo)->build();
     expect($jsonApplication->run(['tool', '--format=json', 'missing']))->toBe(ExitCode::COMMAND_NOT_FOUND);
     rewind($errors);
-    expect(stream_get_contents($errors))->toBe('{"type":"error","message":"Command \\"missing\\" was not found."}'.PHP_EOL);
+    expect(stream_get_contents($errors))->toBe('{"type":"error","message":"Command \\"missing\\" was not found."}' . PHP_EOL);
 });
 
 it('keeps subprocess environments, validates workspace roots, and exposes safe terminal fallbacks', function (): void {
-    $process = (new SubprocessRunner)->run([PHP_BINARY, '-r', 'echo getenv("PATH") === false ? "missing" : "present";'], ['CONSOLE_TEST_VALUE' => 'ok']);
-    $capabilities = (new CapabilityDetector)->detect(fopen('php://temp', 'r'), fopen('php://temp', 'w'), ['LANG' => 'C', 'COLUMNS' => '120', 'LINES' => '40']);
-    $forcedColor = (new CapabilityDetector)->detect(
+    $process = (new SubprocessRunner())->run([PHP_BINARY, '-r', 'echo getenv("PATH") === false ? "missing" : "present";'], ['CONSOLE_TEST_VALUE' => 'ok']);
+    $capabilities = (new CapabilityDetector())->detect(fopen('php://temp', 'r'), fopen('php://temp', 'w'), ['LANG' => 'C', 'COLUMNS' => '120', 'LINES' => '40']);
+    $forcedColor = (new CapabilityDetector())->detect(
         fopen('php://temp', 'r'),
         fopen('php://temp', 'w'),
         [
@@ -700,7 +760,7 @@ it('keeps subprocess environments, validates workspace roots, and exposes safe t
             'TERM' => 'xterm-256color',
         ],
     );
-    $disabledColor = (new CapabilityDetector)->detect(
+    $disabledColor = (new CapabilityDetector())->detect(
         fopen('php://temp', 'r'),
         fopen('php://temp', 'w'),
         [
@@ -710,7 +770,7 @@ it('keeps subprocess environments, validates workspace roots, and exposes safe t
             'TERM' => 'xterm-256color',
         ],
     );
-    $signals = new SignalManager;
+    $signals = new SignalManager();
 
     expect($process->output)->toBe('present')
         ->and($capabilities->unicode)->toBeFalse()
@@ -721,18 +781,18 @@ it('keeps subprocess environments, validates workspace roots, and exposes safe t
         ->and($disabledColor->ansi)->toBeFalse()
         ->and($disabledColor->colorDepth)->toBe(ColorDepth::NONE)
         ->and($signals->register())->toBeBool();
-    expect(fn (): Workspace => new Workspace(''))->toThrow(InvalidArgumentException::class);
+    expect(fn(): Workspace => new Workspace(''))->toThrow(InvalidArgumentException::class);
 });
 
 it('runs argv processes with streamed redaction and timeout protection', function (): void {
     $streamed = [];
-    $result = (new ProcessRunner)->run(
+    $result = (new ProcessRunner())->run(
         [PHP_BINARY, '-r', 'fwrite(STDERR, "error SECRET"); echo getenv("CONSOLE_VALUE")." SECRET";'],
         new ProcessOptions(workingDirectory: sys_get_temp_dir(), environment: ['CONSOLE_VALUE' => 'ready'], sensitiveValues: ['SECRET'], onOutput: function (string $chunk) use (&$streamed): void {
             $streamed[] = $chunk;
         }),
     );
-    $timeout = (new ProcessRunner)->run([PHP_BINARY, '-r', 'usleep(500000);'], new ProcessOptions(timeoutSeconds: 0.05));
+    $timeout = (new ProcessRunner())->run([PHP_BINARY, '-r', 'usleep(500000);'], new ProcessOptions(timeoutSeconds: 0.05));
 
     expect($result->successful())->toBeTrue()
         ->and($result->output)->toBe('ready [REDACTED]')
@@ -744,7 +804,7 @@ it('runs argv processes with streamed redaction and timeout protection', functio
 
 it('redacts secrets split between process chunks and supports stream-only mode', function (): void {
     $chunks = [];
-    $result = (new ProcessRunner)->run(
+    $result = (new ProcessRunner())->run(
         [PHP_BINARY, '-r', 'fwrite(STDOUT, "SE"); usleep(1000); fwrite(STDOUT, "CRET");'],
         new ProcessOptions(
             mode: ProcessMode::STREAM,
@@ -761,14 +821,13 @@ it('redacts secrets split between process chunks and supports stream-only mode',
 });
 
 it('runs due schedules with callbacks, state recording, cron matching, and overlap locks', function (): void {
-    $schedule = new Schedule;
+    $schedule = new Schedule();
     $success = false;
     $schedule->command('users:sync')->hourly()->withoutOverlap()->onSuccess(function (ScheduleRun $run) use (&$success): void {
         $success = $run->successful();
     });
     $schedule->command('nightly:cleanup')->dailyAt('02:30');
-    $state = new class implements ScheduleStateRepository
-    {
+    $state = new class implements ScheduleStateRepository {
         /** @var list<ScheduleRun> */
         public array $runs = [];
 
@@ -777,8 +836,7 @@ it('runs due schedules with callbacks, state recording, cron matching, and overl
             $this->runs[] = $run;
         }
     };
-    $locks = new class implements LockProviderInterface
-    {
+    $locks = new class implements LockProviderInterface {
         public int $acquired = 0;
 
         public function acquire(string $key, float $waitSeconds, float $leaseSeconds = 30.0): ?LockHandle
@@ -797,7 +855,7 @@ it('runs due schedules with callbacks, state recording, cron matching, and overl
         public function release(?LockHandle $handle): void {}
     };
     $runner = new ScheduleRunner(new CommandMutex($locks), $state);
-    $runs = $runner->runDue($schedule, static fn (string $command): int => $command === 'users:sync' ? 0 : 1, new DateTimeImmutable('2026-01-01 10:00:00 UTC'));
+    $runs = $runner->runDue($schedule, static fn(string $command): int => $command === 'users:sync' ? 0 : 1, new DateTimeImmutable('2026-01-01 10:00:00 UTC'));
 
     expect($runs)->toHaveCount(1)
         ->and($runs[0]->command)->toBe('users:sync')
@@ -807,28 +865,27 @@ it('runs due schedules with callbacks, state recording, cron matching, and overl
 });
 
 it('applies named configuration profiles and supports schedule manifests and single-server locks', function (): void {
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()->configuration(['name' => 'base'])->profile('production', ['name' => 'production'])->commands([ConfigurationCommand::class])->io($io)->build();
     expect($application->run(['tool', '--profile=production', 'config:show']))->toBe(ExitCode::SUCCESS)
         ->and($io->outputText())->toContain('production');
 
-    $schedule = new Schedule;
+    $schedule = new Schedule();
     $schedule->command('sync')->hourly()->onOneServer();
     $path = tempnam(sys_get_temp_dir(), 'schedule-');
-    (new ScheduleManifestCompiler)->write($schedule, $path);
+    (new ScheduleManifestCompiler())->write($schedule, $path);
     $loaded = ScheduleManifest::load($path);
     expect($loaded->entries()[0]->requiresSingleServer())->toBeTrue();
     unlink($path);
 });
 
 it('requires a compiled command manifest for explicitly production applications', function (): void {
-    expect(fn (): Application => Application::configure()->production()->build())->toThrow(LogicException::class);
+    expect(fn(): Application => Application::configure()->production()->build())->toThrow(LogicException::class);
 });
 
 it('enforces authorization, supports keyboard selection, and forwards process input', function (): void {
-    $io = new BufferedIO;
-    $application = Application::configure()->commands([ThrowingFixtureCommand::class])->authorizationPolicy(new class implements CommandAuthorizationPolicy
-    {
+    $io = new BufferedIO();
+    $application = Application::configure()->commands([ThrowingFixtureCommand::class])->authorizationPolicy(new class implements CommandAuthorizationPolicy {
         public function authorize(CommandDescriptor $command, CommandContext $context): bool
         {
             unset($command, $context);
@@ -837,7 +894,7 @@ it('enforces authorization, supports keyboard selection, and forwards process in
         }
     })->io($io)->build();
     $prompts = new PromptManager(new AnswerQueue(['down', '']), static function (): void {});
-    $input = (new ProcessRunner)->run([PHP_BINARY, '-r', 'echo stream_get_contents(STDIN);'], new ProcessOptions(input: 'forwarded'));
+    $input = (new ProcessRunner())->run([PHP_BINARY, '-r', 'echo stream_get_contents(STDIN);'], new ProcessOptions(input: 'forwarded'));
 
     expect($application->run(['tool', 'throwing']))->toBe(ExitCode::FAILURE)
         ->and($io->errorText())->toContain('not authorized')
@@ -846,18 +903,18 @@ it('enforces authorization, supports keyboard selection, and forwards process in
 });
 
 it('loads compiled validation metadata and emits shell completion without command execution', function (): void {
-    $directory = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-manifest-'.bin2hex(random_bytes(4));
+    $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'console-manifest-' . bin2hex(random_bytes(4));
     mkdir($directory);
-    $validation = $directory.DIRECTORY_SEPARATOR.'validation.php';
-    $completion = $directory.DIRECTORY_SEPARATOR.'completion.php';
+    $validation = $directory . DIRECTORY_SEPARATOR . 'validation.php';
+    $completion = $directory . DIRECTORY_SEPARATOR . 'completion.php';
     $descriptors = [CommandDescriptor::fromClass(ValidatedCommand::class)];
-    (new ValidationManifestCompiler)->write($descriptors, $validation);
-    (new CompletionManifestCompiler)->write($descriptors, $completion);
+    (new ValidationManifestCompiler())->write($descriptors, $validation);
+    (new CompletionManifestCompiler())->write($descriptors, $completion);
     $manifest = require $validation;
     $manifest['user:create']['email']['rules'] = ['max:3'];
-    file_put_contents($validation, '<?php return '.var_export($manifest, true).';');
+    file_put_contents($validation, '<?php return ' . var_export($manifest, true) . ';');
 
-    $io = new BufferedIO;
+    $io = new BufferedIO();
     $application = Application::configure()->commands([ValidatedCommand::class])->validationManifest($validation)->completionManifest($completion)->io($io)->build();
     expect($application->run(['tool', 'user:create', 'four', '--age=20']))->toBe(ExitCode::INVALID_USAGE)
         ->and($io->errorText())->toContain('email:')
@@ -870,7 +927,7 @@ it('loads compiled validation metadata and emits shell completion without comman
 });
 
 it('loads a validation manifest only when a real command is dispatched', function (): void {
-    $path = sys_get_temp_dir().DIRECTORY_SEPARATOR.'console-lazy-validation-'.bin2hex(random_bytes(4)).'.php';
+    $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'console-lazy-validation-' . bin2hex(random_bytes(4)) . '.php';
     file_put_contents(
         $path,
         '<?php $GLOBALS["console_validation_manifest_loads"]++; return [];',
@@ -881,7 +938,7 @@ it('loads a validation manifest only when a real command is dispatched', functio
         $application = Application::configure()
             ->commands([NetworkCapabilityCommand::class])
             ->validationManifest($path)
-            ->io(new BufferedIO)
+            ->io(new BufferedIO())
             ->build();
 
         expect($GLOBALS['console_validation_manifest_loads'])->toBe(0)
@@ -896,17 +953,16 @@ it('loads a validation manifest only when a real command is dispatched', functio
 });
 
 it('renders custom themes, semantic components, prompt filtering, and actionable suggestions', function (): void {
-    $theme = new class implements Theme
-    {
+    $theme = new class implements Theme {
         public function style(string $role): Style
         {
-            return $role === 'info' ? new Style(Color::BLUE, true) : new Style;
+            return $role === 'info' ? new Style(Color::BLUE, true) : new Style();
         }
     };
     $ansi = (new AnsiRenderer($theme))->render(Frame::line('Themed', 'info'));
     $prompt = new PromptManager(new AnswerQueue([]), static function (): void {});
-    $io = new BufferedIO;
-    $liveIo = new BufferedIO;
+    $io = new BufferedIO();
+    $liveIo = new BufferedIO();
     $application = Application::configure()->commands([ValidatedCommand::class])->io($io)->build();
     $liveIo->progress(100, 'Upload')->advance();
 
@@ -923,8 +979,7 @@ it('renders custom themes, semantic components, prompt filtering, and actionable
 });
 
 it('renders basic, indexed, and true-color themes while plain output stays escape-free', function (): void {
-    $theme = new class implements Theme
-    {
+    $theme = new class implements Theme {
         public function style(string $role): Style
         {
             return $role === 'accent'
@@ -948,7 +1003,7 @@ it('renders basic, indexed, and true-color themes while plain output stays escap
         ->toContain("\033[1;3;4;38;2;34;211;238;48;2;15;23;42mPalette\033[0m")
         ->and((new AnsiRenderer($theme, ColorDepth::NONE))->render($frame))
         ->toBe('Palette' . PHP_EOL)
-        ->and((new PlainRenderer)->render($frame))->toBe('Palette' . PHP_EOL);
+        ->and((new PlainRenderer())->render($frame))->toBe('Palette' . PHP_EOL);
 });
 
 it('forces a safe basic palette on redirected output only when ANSI is explicitly enabled', function (): void {
@@ -967,7 +1022,7 @@ it('forces a safe basic palette on redirected output only when ANSI is explicitl
     $rendered = stream_get_contents($output);
     expect($rendered)->toStartWith('[INFO] Ready' . PHP_EOL)
         ->and($rendered)->toContain("\033[1;92m[OK] Colored\033[0m")
-        ->and((new BufferedIO)->output())->toBe([]);
+        ->and((new BufferedIO())->output())->toBe([]);
 });
 
 it('rejects obsolete command manifest formats explicitly', function (): void {

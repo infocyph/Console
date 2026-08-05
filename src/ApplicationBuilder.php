@@ -423,6 +423,19 @@ final class ApplicationBuilder
         return $this;
     }
 
+    /**
+     * Use an InterMix artifact validated as part of the same immutable deployment.
+     *
+     * @param string $path Trusted application-owned artifact path.
+     * @param string $fingerprint SHA-256 fingerprint from the deployment manifest.
+     */
+    public function prevalidatedCompiledContainer(string $path, string $fingerprint): self
+    {
+        $this->container->compiledContainer($path, $fingerprint);
+
+        return $this;
+    }
+
     public function production(bool $enabled = true): self
     {
         $this->production = $enabled;
